@@ -194,6 +194,9 @@ def VortDiagnostic2D(u_cube, v_cube,
     curl_nvs = ff_f*CGO.kcurl_orca(unvs_zint/ff_u, vnvs_zint/ff_v, e1u, e2v, e1f, e2f )
     curl_nul = ff_f*CGO.kcurl_orca(unul_zint/ff_u, vnul_zint/ff_v, e1u, e2v, e1f, e2f )
     
+    #Calculate the friction contribution from remainder of ZDF
+    curl_frc = curl_zdf - curl_wnd
+    
     #Calculate total advective contribution
     curl_adv = curl_keg + curl_rvo + curl_zad
 
@@ -278,6 +281,13 @@ def VortDiagnostic2D(u_cube, v_cube,
     curl_wnd_cube.units         = 'm/s2'
     curl_wnd_cube.add_aux_coord(lat, [-2,-1])
     curl_wnd_cube.add_aux_coord(lon, [-2,-1])
+    
+    curl_frc_cube = Cube(curl_frc, dim_coords_and_dims=[(time_coord,0)])
+    curl_frc_cube.long_name     = 'k-curl of depth-integrated lateral friction (partial ZDF) trend'
+    curl_frc_cube.var_name      = 'curl_frc_zint'
+    curl_frc_cube.units         = 'm/s2'
+    curl_frc_cube.add_aux_coord(lat, [-2,-1])
+    curl_frc_cube.add_aux_coord(lon, [-2,-1])
 
     curl_adv_cube = Cube(curl_adv, dim_coords_and_dims=[(time_coord,0)])
     curl_adv_cube.long_name     = 'k-curl of depth-integrated total advection trend'
@@ -344,6 +354,7 @@ def VortDiagnostic2D(u_cube, v_cube,
                     'ZAD' :curl_zad_cube,
                     'TOT' :curl_tot_cube,
                     'WND' :curl_wnd_cube,
+                    'FRC' :curl_frc_cube,
                     'ADV' :curl_adv_cube,
                     'RES' :curl_res_cube,
                     'PVO2':curl_pvo2_cube,

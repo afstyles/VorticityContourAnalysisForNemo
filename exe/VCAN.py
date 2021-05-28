@@ -71,18 +71,19 @@ def run_VCAN(data_dir, out_label, sf_zint_log, vort_diag_log, cont_int_log, mode
     import VortDiagnostics
 
     data_list = iris.load(data_dir + "/*grid*.nc")
-
+    
     grid_list = iris.load(domcfg_path)
+    
 
     i = 0
     for cube in data_list:
-        if len(cube.shape) >=2:
+        if len(cube.shape) > 2:
             data_list[i] = cube[...,jmin:jmax, imin:imax]
         i = i + 1
 
     i = 0
     for cube in grid_list:
-        if len(cube.shape) >= 2:
+        if len(cube.shape) > 2:
             grid_list[i] = cube[...,jmin:jmax, imin:imax]
         i = i + 1
 
@@ -214,7 +215,7 @@ def run_VCAN(data_dir, out_label, sf_zint_log, vort_diag_log, cont_int_log, mode
         tmask = ~np.ma.make_mask(np.squeeze(tmask_cube.data))
 
     if model.lower() == "global":
-        tmask = np.squeeze(e3t.mask)
+        tmask = np.ma.make_mask(np.squeeze(CubeListExtract(data_list, 'e3t').data.mask))
 
     #Create output folder in data directory
     out_dir = os.path.abspath(f"{data_dir}/OUTPUT_{out_label}/")
@@ -284,28 +285,50 @@ def run_VCAN(data_dir, out_label, sf_zint_log, vort_diag_log, cont_int_log, mode
 
             vort_diag_list = iris.load(out_dir + "/vort_2D_*.nc")
 
-            vort_diag_dict = { 'KEG' :CubeListExtract(vort_diag_list, 'curl_keg_zint'),
+            Ni_input_dict = { 'KEG' :CubeListExtract(vort_diag_list, 'curl_keg_zint'),
                     'RVO' :CubeListExtract(vort_diag_list, 'curl_rvo_zint'),
                     'PVO' :CubeListExtract(vort_diag_list, 'curl_pvo_zint'),
                     'HPG' :CubeListExtract(vort_diag_list, 'curl_hpg_zint'),
                     'LDF' :CubeListExtract(vort_diag_list, 'curl_ldf_zint'),
-                    'ZDF' :CubeListExtract(vort_diag_list, 'curl_zdf_zint'),
+#                     'ZDF' :CubeListExtract(vort_diag_list, 'curl_zdf_zint'),
                     'ZAD' :CubeListExtract(vort_diag_list, 'curl_zad_zint'),
                     'TOT' :CubeListExtract(vort_diag_list, 'curl_tot_zint'),
                     'WND' :CubeListExtract(vort_diag_list, 'curl_wnd_zint'),
-                    'ADV' :CubeListExtract(vort_diag_list, 'curl_adv_zint'),
-                    'RES' :CubeListExtract(vort_diag_list, 'curl_res_zint'),
-                    'PVO2':CubeListExtract(vort_diag_list, 'curl_pvo2_zint'),
+                    'FRC' :CubeListExtract(vort_diag_list, 'curl_frc_zint'),
+#                     'ADV' :CubeListExtract(vort_diag_list, 'curl_adv_zint'),
+#                     'RES' :CubeListExtract(vort_diag_list, 'curl_res_zint'),
+#                     'PVO2':CubeListExtract(vort_diag_list, 'curl_pvo2_zint'),
                     'FDU' :CubeListExtract(vort_diag_list, 'curl_fdu_zint'),
                     'MLV' :CubeListExtract(vort_diag_list, 'curl_mlv_zint'),
                     'BET' :CubeListExtract(vort_diag_list, 'curl_bet_zint'),
                     'PRC' :CubeListExtract(vort_diag_list, 'curl_prc_zint')}
+            
+        else:
+            
+            Ni_input_dict = { 'KEG' :vort_diag_dict['KEG'],
+                    'RVO' :vort_diag_dict['RVO'],
+                    'PVO' :vort_diag_dict['PVO'],
+                    'HPG' :vort_diag_dict['HPG'],
+                    'LDF' :vort_diag_dict['LDF'],
+#                     'ZDF' :CubeListExtract(vort_diag_list, 'curl_zdf_zint'),
+                    'ZAD' :vort_diag_dict['ZAD'],
+                    'TOT' :vort_diag_dict['TOT'],
+                    'WND' :vort_diag_dict['WND'],
+                    'FRC' :vort_diag_dict['FRC'],
+#                     'ADV' :CubeListExtract(vort_diag_list, 'curl_adv_zint'),
+#                     'RES' :CubeListExtract(vort_diag_list, 'curl_res_zint'),
+#                     'PVO2':CubeListExtract(vort_diag_list, 'curl_pvo2_zint'),
+                             
+                    'FDU' :vort_diag_dict['FDU'],
+                    'MLV' :vort_diag_dict['MLV'],
+                    'BET' :vort_diag_dict['BET'],
+                    'PRC' :vort_diag_dict['PRC']}
 
 
         keywords = {'lonlatbounds':lonlatbounds, 'interpolation':interp, 'res':interp_res, 'nlevels':nlevels, 'level_min':level_min, 'level_max':level_max }
         area_weights = e1f*e2f
         
-        Ni_cubes_out_dict, contour_masks = ContourInt.niiler_integral2D(vort_diag_dict, sf_zint_cube, area_weights, **keywords)
+        Ni_cubes_out_dict, contour_masks = ContourInt.niiler_integral2D(Ni_input_dict, sf_zint_cube, area_weights, **keywords)
 
         
         f = open(f"{out_dir}/NI_contour_masks.{out_label}.pkl",'wb')
@@ -314,8 +337,24 @@ def run_VCAN(data_dir, out_label, sf_zint_log, vort_diag_log, cont_int_log, mode
 
         for Ni_label in Ni_cubes_out_dict:
             iris.save(Ni_cubes_out_dict[Ni_label], out_dir + f'/NI_2D_vort_{Ni_label}.{out_label}.nc' )
+            
+        #Also calculate integrals that are linear combinations of others
+        print("Calculating ADV")
+        NI_ADV_cube = ContourInt.NI_ADV_calc(Ni_cubes_out_dict['KEG'], Ni_cubes_out_dict['RVO'], Ni_cubes_out_dict['ZAD'])
+        
+        print("Calculating ZDF")
+        NI_ZDF_cube = ContourInt.NI_ZDF_calc(Ni_cubes_out_dict['WND'], Ni_cubes_out_dict['FRC'])
+        
+        print("Calculating RES")
+        NI_RES_cube = ContourInt.NI_RES_calc(NI_ADV_cube             , Ni_cubes_out_dict['PVO'], Ni_cubes_out_dict['HPG'],
+                                             Ni_cubes_out_dict['LDF'], NI_ZDF_cube             , Ni_cubes_out_dict['TOT'])
+        
+        
+        iris.save(NI_ADV_cube, out_dir + f'/NI_2D_vort_ADV.{out_label}.nc')
+        iris.save(NI_ZDF_cube, out_dir + f'/NI_2D_vort_ZDF.{out_label}.nc')
+        iris.save(NI_RES_cube, out_dir + f'/NI_2D_vort_RES.{out_label}.nc')
+        
 
-    
     return
 
 

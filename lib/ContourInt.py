@@ -389,4 +389,94 @@ def DepIntSF_orca(u_cube, e1u, e2u, e3u, e1f):
     
     return sf_zint_cube
 
-                                                    
+def NI_ADV_calc(Ni_keg_cube, Ni_rvo_cube, Ni_zad_cube):
+    """
+    Combine contour integrals of the following diagnostics to calculate the total advective contribution
+    """
+    
+    from iris.cube import Cube
+    
+    sf_level_coord = Ni_keg_cube.coord("sf_zint_level")
+    area_coord = Ni_keg_cube.coord("enclosed_area")
+    
+    Ni_adv_cube = Cube(Ni_keg_cube.data + Ni_rvo_cube.data + Ni_zad_cube.data)
+    Ni_adv_cube.long_name = 'NiilerIntegral2D(ADV)'
+    Ni_adv_cube.var_name = 'Ni2D_ADV'
+    Ni_adv_cube.units = 'm3/s2'
+    Ni_adv_cube.add_aux_coord(sf_level_coord, [0])
+    Ni_adv_cube.add_aux_coord(area_coord, [0])
+    
+    return Ni_adv_cube
+
+def NI_ZDF_calc(Ni_wnd_cube, Ni_frc_cube):
+    """
+    Combine contour integrals of the following diagnostics to calculate the vertical diffusion contribution
+    """
+    
+    from iris.cube import Cube
+    
+    sf_level_coord = Ni_wnd_cube.coord("sf_zint_level")
+    area_coord = Ni_wnd_cube.coord("enclosed_area")
+    
+    Ni_zdf_cube = Cube(Ni_wnd_cube.data + Ni_frc_cube.data)
+    Ni_zdf_cube.long_name = 'NiilerIntegral2D(ZDF)'
+    Ni_zdf_cube.var_name = 'Ni2D_ZDF'
+    Ni_zdf_cube.units = 'm3/s2'
+    Ni_zdf_cube.add_aux_coord(sf_level_coord, [0])
+    Ni_zdf_cube.add_aux_coord(area_coord, [0])
+    
+    return Ni_zdf_cube
+    
+def NI_RES_calc(Ni_adv_cube, Ni_pvo_cube, Ni_hpg_cube, Ni_ldf_cube, Ni_zdf_cube, Ni_tot_cube):
+    """
+    Combine contour integrals of the following diagnostics to calculate the residual contribution
+    """
+    
+    from iris.cube import Cube
+    
+    sf_level_coord = Ni_adv_cube.coord("sf_zint_level")
+    area_coord = Ni_adv_cube.coord("enclosed_area")
+    
+    Ni_res_cube = Cube(Ni_adv_cube.data + Ni_pvo_cube.data + Ni_hpg_cube.data
+                       + Ni_ldf_cube.data + Ni_zdf_cube.data - Ni_tot_cube.data)
+    
+    Ni_res_cube.long_name = 'NiilerIntegral2D(RES)'
+    Ni_res_cube.var_name = 'Ni2D_RES'
+    Ni_res_cube.units = 'm3/s2'
+    Ni_res_cube.add_aux_coord(sf_level_coord, [0])
+    Ni_res_cube.add_aux_coord(area_coord, [0])
+    
+    return Ni_res_cube
+
+def take_largest_contour(int_out, level_out, area_out):
+    
+    """
+    Function that looks at outputs from contour_integral and filters any contours that aren't that largest at a given value
+    
+    int_out - 1D Array of integrated values
+    level_out - 1D Array of contour levels  
+    area_out - 1D Array of enclosed contour area
+    
+    returns output_value, output_level
+    """
+
+    import numpy as np
+    
+    levels_unique = np.unique(level_out)
+    
+    output_value = []
+    output_level = []
+    
+    for level in levels_unique:
+        values = int_out[(level_out == level)]
+        areas = area_out[(level_out == level)]
+        large_area_value = values[ areas == np.max(areas) ]
+        
+        if not np.ma.is_masked(large_area_value):
+            output_value = output_value + [ np.mean(large_area_value) ]
+            output_level = output_level + [level]
+        
+    output_value = np.squeeze(np.array(output_value))
+    output_level = np.squeeze(np.array(output_level))
+    
+    return output_value, output_level
