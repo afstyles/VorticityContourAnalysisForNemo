@@ -14,9 +14,12 @@ Contains methods:
     niiler_integral2D --> Integrates all vorticity diagnostics over areas enclosed by contours 
     contour_integral --> Identifies contours and integrates fields over the enclosed areas
     interp_to_finegrid --> Interpolates a field to a fine lon, lat grid
-    take_largest_contour --> From outputs of niiler_integral2d, take contours that span the largest area 
-                             if there are multiple contours of the same isovalue  
+    NI_ADV_calc --> Calculates advective contour integration by adding integrations of ZAD, RVO and KEG
+    NI_ZDF_calc --> Calculates the total vertical diffusion contribution by adding integrations of WND and FRC
+    NI_RES_calc --> Calculates the residual of the vorticity budget
     DepIntSF_orca --> Calculates the depth integrated stream function
+    take_largest_contour --> From outputs of niiler_integral2d, take contours that span the largest area 
+                             if there are multiple contours of the same isovalue 
 """
 import numpy as np
 import pickle
