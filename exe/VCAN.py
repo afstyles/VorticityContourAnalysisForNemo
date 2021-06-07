@@ -74,6 +74,26 @@ def run_VCAN(data_dir, out_label, sf_zint_log, vort_diag_log, cont_int_log, mode
     
     grid_list = iris.load(domcfg_path)
     
+    print("Carrying our following operations >>>")
+    print(f"sf_zint_log = {sf_zint_log}")
+    print(f"vort_diag_log = {vort_diag_log}")
+    print(f"cont_int_log = {cont_int_log}")
+    
+    print("NEMO config details have been set to >>>")
+    print(f"model = {model}")
+    print(f"fscheme = {fscheme}")
+    
+    if cont_int_log == True:
+        print("Contour integration settings are >>>")
+        print(f"interp = {interp}")
+        print(f"1/interp_res = {1/interp_res}")
+        print(f"level_min = {level_min}")
+        print(f"level_max = {level_max}")
+        
+    print(">>>")
+
+    
+    
 
     i = 0
     for cube in data_list:
@@ -290,14 +310,10 @@ def run_VCAN(data_dir, out_label, sf_zint_log, vort_diag_log, cont_int_log, mode
                     'PVO' :CubeListExtract(vort_diag_list, 'curl_pvo_zint'),
                     'HPG' :CubeListExtract(vort_diag_list, 'curl_hpg_zint'),
                     'LDF' :CubeListExtract(vort_diag_list, 'curl_ldf_zint'),
-#                     'ZDF' :CubeListExtract(vort_diag_list, 'curl_zdf_zint'),
                     'ZAD' :CubeListExtract(vort_diag_list, 'curl_zad_zint'),
                     'TOT' :CubeListExtract(vort_diag_list, 'curl_tot_zint'),
                     'WND' :CubeListExtract(vort_diag_list, 'curl_wnd_zint'),
                     'FRC' :CubeListExtract(vort_diag_list, 'curl_frc_zint'),
-#                     'ADV' :CubeListExtract(vort_diag_list, 'curl_adv_zint'),
-#                     'RES' :CubeListExtract(vort_diag_list, 'curl_res_zint'),
-#                     'PVO2':CubeListExtract(vort_diag_list, 'curl_pvo2_zint'),
                     'FDU' :CubeListExtract(vort_diag_list, 'curl_fdu_zint'),
                     'MLV' :CubeListExtract(vort_diag_list, 'curl_mlv_zint'),
                     'BET' :CubeListExtract(vort_diag_list, 'curl_bet_zint'),
@@ -310,15 +326,10 @@ def run_VCAN(data_dir, out_label, sf_zint_log, vort_diag_log, cont_int_log, mode
                     'PVO' :vort_diag_dict['PVO'],
                     'HPG' :vort_diag_dict['HPG'],
                     'LDF' :vort_diag_dict['LDF'],
-#                     'ZDF' :CubeListExtract(vort_diag_list, 'curl_zdf_zint'),
                     'ZAD' :vort_diag_dict['ZAD'],
                     'TOT' :vort_diag_dict['TOT'],
                     'WND' :vort_diag_dict['WND'],
                     'FRC' :vort_diag_dict['FRC'],
-#                     'ADV' :CubeListExtract(vort_diag_list, 'curl_adv_zint'),
-#                     'RES' :CubeListExtract(vort_diag_list, 'curl_res_zint'),
-#                     'PVO2':CubeListExtract(vort_diag_list, 'curl_pvo2_zint'),
-                             
                     'FDU' :vort_diag_dict['FDU'],
                     'MLV' :vort_diag_dict['MLV'],
                     'BET' :vort_diag_dict['BET'],

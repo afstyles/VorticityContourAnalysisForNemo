@@ -31,7 +31,7 @@ nn_res = float(sys.argv[2])
 #Input settings 
 #>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 
-out_label = "VCAN_test"  #Label for output folder
+out_label = "VCAN_test_with_interp"  #Label for output folder
 
 sf_zint_log = True   # = True --> calculate the barotropic stream function
 vort_diag_log = True  # = True --> calculate vorticity diagnostics
@@ -53,7 +53,7 @@ if model.lower() == "global":
 if model.lower() == "gyre":  domcfg_path = os.path.abspath(data_dir + '/mesh_mask.nc')
 
 fscheme = 'een_1'   # = 'een_0' --> The configuration uses the EEN vorticity scheme with nn_een_e3f = 0
-                    # = 'een_0' --> The configuration uses the EEN vorticity scheme with nn_een_e3f = 1
+                    # = 'een_1' --> The configuration uses the EEN vorticity scheme with nn_een_e3f = 1
                     # Use een_1 if the model used the ENE or ENS vorticity scheme. Recreations of PVO are not exact but are very close.
 
 # Minimum and maximum i and j indices

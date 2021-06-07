@@ -137,7 +137,7 @@ def VortDiagnostic2D(u_cube, v_cube,
     uzad_zint  = np.sum(uzad_cube.data  * e3u, axis = -3)
     utot_zint  = np.sum(utot_cube.data  * e3u, axis = -3)
     ubet_zint  = np.sum(ubet_cube.data  * e3u, axis = -3)
-    unvs_zint  = np.sum(uprc_cube.data  * e3u, axis = -3)
+    uprc_zint  = np.sum(uprc_cube.data  * e3u, axis = -3)
     upvo2_zint = np.sum(upvo2_cube.data * e3u, axis = -3)
     unul_zint  = np.sum(unul_cube.data  * e3u, axis = -3)
 
@@ -151,7 +151,7 @@ def VortDiagnostic2D(u_cube, v_cube,
     vzad_zint  = np.sum(vzad_cube.data  * e3v, axis = -3)
     vtot_zint  = np.sum(vtot_cube.data  * e3v, axis = -3)
     vbet_zint  = np.sum(vbet_cube.data  * e3v, axis = -3)
-    vnvs_zint  = np.sum(vprc_cube.data  * e3v, axis = -3)
+    vprc_zint  = np.sum(vprc_cube.data  * e3v, axis = -3)
     vpvo2_zint = np.sum(vpvo2_cube.data * e3v, axis = -3)
     vnul_zint  = np.sum(vnul_cube.data  * e3v, axis = -3)
     
@@ -191,7 +191,7 @@ def VortDiagnostic2D(u_cube, v_cube,
 
     #Divide the momentum diagnostics by the u/v point value of f so no beta effects emerge from the curl calculation
     #Then multiply by the value of f at the f point afterwards
-    curl_nvs = ff_f*CGO.kcurl_orca(unvs_zint/ff_u, vnvs_zint/ff_v, e1u, e2v, e1f, e2f )
+    curl_prc = ff_f*CGO.kcurl_orca(uprc_zint/ff_u, vprc_zint/ff_v, e1u, e2v, e1f, e2f )
     curl_nul = ff_f*CGO.kcurl_orca(unul_zint/ff_u, vnul_zint/ff_v, e1u, e2v, e1f, e2f )
     
     #Calculate the friction contribution from remainder of ZDF
@@ -211,7 +211,7 @@ def VortDiagnostic2D(u_cube, v_cube,
     curl_fdu = PVO_divcalc(u_cube, v_cube, ff_f, e1u, e1v, e2u, e2v, e1f, e2f, e3u, e3v, curl_pvo.mask )  #f divh(U)
     curl_mlv = curl_nul - curl_fdu  #Changes in model level
     curl_bet = curl_bet - curl_nul  #Beta effect
-    curl_prc = curl_nvs - curl_nul  #Partial cells
+    curl_prc = curl_prc - curl_nul  #Partial cells
 
     #Save outputs as IRIS cubes >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
     time_coord  = ukeg_cube.coord('time')
@@ -947,7 +947,7 @@ def PVO_prccalc(u_cube, v_cube, ff_f, e1u, e1v, e2u, e2v, e1f, e2f, e3u, e3v, e3
 
     #First determine f cell thicknesses
     e3t_copy = np.ma.copy(e3t)
-    e3t_copy[e3t_copy.mask] = 0.0
+    e3t_copy[tmask] = 0.0
     
     if fscheme == 'een_0':
         e3f = (e3t_copy + ip1(e3t_copy) + jp1(e3t_copy) + ip1(jp1(e3t_copy)))/4
