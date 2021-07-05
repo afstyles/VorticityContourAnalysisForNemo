@@ -483,63 +483,92 @@ def PVO_fullcalc(u_cube, v_cube, ff_f, e1u, e1v, e2u, e2v, e1f, e2f, e3u, e3v, e
     v_pvo_cube - IRIS cube, y component of the recreated PVO momentum diagnostic  (t,z,y,x) [m/s2]
 
     """
-    #First determine the f cell thicknesses
-    e3t_copy = np.ma.copy(e3t)
-    e3t_copy[tmask] = 0.0
+
+    if fscheme == 'een_0' or fscheme =='een_1':
+        #First determine the f cell thicknesses (only needed for EEN schemes)
+        e3t_copy = np.ma.copy(e3t)
+        e3t_copy[tmask] = 0.0
     
-    if fscheme == 'een_0':
-        e3f = (e3t_copy + ip1(e3t_copy) + jp1(e3t_copy) + ip1(jp1(e3t_copy)))/4
+        if fscheme == 'een_0':
+            e3f = (e3t_copy + ip1(e3t_copy) + jp1(e3t_copy) + ip1(jp1(e3t_copy)))/4
+
+        elif fscheme == 'een_1':
+            #Calculate number of masked t points surrounding the f point
+            num_masked_t = np.sum([tmask,ip1(tmask),jp1(tmask), ip1(jp1(tmask))], axis=0)
+
+            e3f  = (e3t_copy + ip1(e3t_copy) + jp1(e3t_copy) + ip1(jp1(e3t_copy)))/(4-num_masked_t)
+
+            #F points that are completely surrounded by masked t points are zeroed
+            e3f[num_masked_t == 4] = 0.0
+
+        #Edge values of e3f are zeroed as done in NEMO
+        e3f[...,-1,:] = 0.0
+        e3f[...,:,-1] = 0.0
+
+        #Calculate f/e3f
+        f_e3f = ff_f/e3f
+
+        #Set areas divided by zero to zero
+        f_e3f[e3f==0.0] = 0.0
+
+        #Calculate f triads (neglecting variations in f)
+        f3_ne = (    f_e3f  + im1(f_e3f) +     jm1(f_e3f))
+        f3_nw = (    f_e3f  + im1(f_e3f) + im1(jm1(f_e3f))) 
+        f3_se = (    f_e3f  + jm1(f_e3f) + im1(jm1(f_e3f))) 
+        f3_sw = (im1(f_e3f) + jm1(f_e3f) + im1(jm1(f_e3f))) 
+
+        #Then set first row and column to zero as done in NEMO
+        f3_ne[...,0,:] = 0
+        f3_nw[...,0,:] = 0
+        f3_se[...,0,:] = 0
+        f3_sw[...,0,:] = 0
+
+        f3_ne[...,:,0] = 0
+        f3_nw[...,:,0] = 0
+        f3_se[...,:,0] = 0
+        f3_sw[...,:,0] = 0
+
+        #Calculate x and y volume fluxes
+        uflux = u_cube.data * e2u * e3u
+        vflux = v_cube.data * e1v * e3v 
+
+
 
     else:
-        #Calculate number of masked t points surrounding the f point
         num_masked_t = np.sum([tmask,ip1(tmask),jp1(tmask), ip1(jp1(tmask))], axis=0)
 
-        e3f  = (e3t_copy + ip1(e3t_copy) + jp1(e3t_copy) + ip1(jp1(e3t_copy)))/(4-num_masked_t)
+        zwz = np.ma.copy(np.broadcast_to(ff_f, e3u.shape))
+        # zwz[num_masked_t > 0.0] = 0.0
+        # zwz[...,-1,: ] = 0.0
+        # zwz[...,: ,-1] = 0.0
 
-        #F points that are completely surrounded by masked t points are zeroed
-        e3f[num_masked_t == 4] = 0.0
-
-    
-    #Edge values of e3f are zeroed as done in NEMO
-    e3f[...,-1,:] = 0.0
-    e3f[...,:,-1] = 0.0
-
-    #Calculate f/e3f
-    f_e3f = ff_f/e3f
-
-    #Set areas divided by zero to zero
-    f_e3f[e3f==0.0] = 0.0
-
-    #Calculate f triads (neglecting variations in f)
-    f3_ne = (    f_e3f  + im1(f_e3f) +     jm1(f_e3f))
-    f3_nw = (    f_e3f  + im1(f_e3f) + im1(jm1(f_e3f))) 
-    f3_se = (    f_e3f  + jm1(f_e3f) + im1(jm1(f_e3f))) 
-    f3_sw = (im1(f_e3f) + jm1(f_e3f) + im1(jm1(f_e3f))) 
-
-    #Then set first row and column to zero as done in NEMO
-    f3_ne[...,0,:] = 0
-    f3_nw[...,0,:] = 0
-    f3_se[...,0,:] = 0
-    f3_sw[...,0,:] = 0
-
-    f3_ne[...,:,0] = 0
-    f3_nw[...,:,0] = 0
-    f3_se[...,:,0] = 0
-    f3_sw[...,:,0] = 0
-
-    #Calculate x and y volume fluxes
-    uflux = u_cube.data * e2u * e3u
-    vflux = v_cube.data * e1v * e3v
+        uflux = u_cube.data * e2u
+        vflux = v_cube.data * e1v
 
     uflux[uflux.mask] = 0.0
     vflux[vflux.mask] = 0.0
 
-
     #Calculate x component of PVO momentum diagnostic
-    uPVO = (1/12.0)*(1/e1u)*(   f3_ne      * vflux 
-                                + ip1(f3_nw) * ip1(vflux)
-                                + f3_se      * jm1(vflux)
-                                + ip1(f3_sw) * ip1(jm1(vflux)) )
+    if fscheme == 'een_0' or fscheme == 'een_1':
+        print("Calculating uPVO according to EEN scheme")
+        uPVO = (1/12.0)*(1/e1u)*(   f3_ne      * vflux 
+                                    + ip1(f3_nw) * ip1(vflux)
+                                    + f3_se      * jm1(vflux)
+                                    + ip1(f3_sw) * ip1(jm1(vflux)) )
+
+    elif fscheme == 'ens':
+        print("Calculating uPVO according to ENS scheme")
+        uPVO = (1/8.0)*(1/e1u)*( jm1(vflux) + ip1(jm1(vflux))
+                                   + vflux  +     ip1(vflux))*(jm1(zwz) + zwz)
+
+    elif fscheme == 'ene':
+        print("Calculating uPVO according to ENE scheme")
+        uPVO = (1/4.0)*(1/e1u)*( jm1(zwz)*( jm1(vflux) + ip1(jm1(vflux)) )
+                                +    zwz *(     vflux +      ip1(vflux)  ) )
+
+    else: 
+        print(f">> unknown Coriolis scheme >> {fscheme} ")
+        return
 
     #Set edge values to zero as done in NEMO
     uPVO[...,0 ,: ] = 0.0
@@ -563,10 +592,27 @@ def PVO_fullcalc(u_cube, v_cube, ff_f, e1u, e1v, e2u, e2v, e1f, e2f, e3u, e3v, e
 
 
     #Calculate y component of PVO momentum diagnostic
-    vPVO = -(1/12.0)*(1/e2v)*(  jp1(f3_sw) * im1(jp1(uflux))
-                             + jp1(f3_se) * jp1(uflux)
-                                 + f3_nw  * im1(uflux)
-                                 + f3_ne  * uflux )
+    if fscheme == 'een_0' or fscheme == 'een_1':
+        print("Calculating vPVO according to EEN scheme")
+        vPVO = -(1/12.0)*(1/e2v)*(  jp1(f3_sw) * im1(jp1(uflux))
+                                + jp1(f3_se) * jp1(uflux)
+                                    + f3_nw  * im1(uflux)
+                                    + f3_ne  * uflux )
+    
+    elif fscheme == 'ens':
+        print("Calculating vPVO according to ENS scheme")
+        vPVO = -(1/8.0)*(1/e2v)*(   im1(uflux) + im1(jp1(uflux)) 
+                                    +   uflux  +     jp1(uflux))*(im1(zwz) + zwz)
+    
+    elif fscheme == 'ene':
+        print("Calculating vPVO according to ENE scheme")
+        vPVO = -(1/4.0)*(1/e2v)*( im1(zwz)*( im1(uflux) + im1(jp1(uflux)) )
+                                         +    zwz *(     uflux +      jp1(uflux)) )
+
+    else: 
+        print(f">> unknown Coriolis scheme >> {fscheme} ")
+        return
+    
 
     #Set edge values to zero as done in NEMO
     vPVO[...,0 ,: ] = 0
@@ -590,7 +636,9 @@ def PVO_fullcalc(u_cube, v_cube, ff_f, e1u, e1v, e2u, e2v, e1f, e2f, e3u, e3v, e
     time_coord = u_cube.coord("time")
     lat = u_cube.coord("latitude")
     lon = u_cube.coord("longitude")
-    e3f_coord = AuxCoord(e3f.data, long_name='e3f', units='m')
+
+    if fscheme == 'een_0' or fscheme == 'een_1':
+        e3f_coord = AuxCoord(e3f.data, long_name='e3f', units='m')
 
     u_pvo_cube = Cube(uPVO, dim_coords_and_dims=[(time_coord,0)])
     u_pvo_cube.long_name     = 'x component of topographic coriolis acceleration'
@@ -598,7 +646,8 @@ def PVO_fullcalc(u_cube, v_cube, ff_f, e1u, e1v, e2u, e2v, e1f, e2f, e3u, e3v, e
     u_pvo_cube.units         = 'm/s2'
     u_pvo_cube.add_aux_coord(lat, [2,3])
     u_pvo_cube.add_aux_coord(lon, [2,3])
-    u_pvo_cube.add_aux_coord(e3f_coord, [1,2,3])
+    if fscheme == 'een_0' or fscheme == 'een_1': 
+        u_pvo_cube.add_aux_coord(e3f_coord, [1,2,3])
     u_pvo_cube.attributes = {'fscheme':fscheme, 'model':model}
 
 
@@ -608,7 +657,8 @@ def PVO_fullcalc(u_cube, v_cube, ff_f, e1u, e1v, e2u, e2v, e1f, e2f, e3u, e3v, e
     v_pvo_cube.units         = 'm/s2'
     v_pvo_cube.add_aux_coord(lat, [2,3])
     v_pvo_cube.add_aux_coord(lon, [2,3])
-    v_pvo_cube.add_aux_coord(e3f_coord, [1,2,3])
+    if fscheme == 'een_0' or fscheme == 'een_1':
+        v_pvo_cube.add_aux_coord(e3f_coord, [1,2,3])
     v_pvo_cube.attributes = {'fscheme':fscheme, 'model':model}
 
     return u_pvo_cube, v_pvo_cube
@@ -622,9 +672,9 @@ def PVO_fullcalc(u_cube, v_cube, ff_f, e1u, e1v, e2u, e2v, e1f, e2f, e3u, e3v, e
 #                ______                              
 #               |______|                             
 
-def PVO_nulcalc(u_cube, v_cube, ff_f, e1u, e1v, e2u, e2v, e1f, e2f, e3u, e3v, tmask, model='global'):
+def PVO_nulcalc(u_cube, v_cube, ff_f, e1u, e1v, e2u, e2v, e1f, e2f, e3u, e3v, tmask, model='global', fscheme='een_0'):
     """
-    PVO_nullcalc(u_cube, v_cube, ff_f, e1u, e1v, e2u, e2v, e1f, e2f, e3u, e3v, tmask, model='global')
+    PVO_nullcalc(u_cube, v_cube, ff_f, e1u, e1v, e2u, e2v, e1f, e2f, e3u, e3v, tmask, model='global', fscheme='een_0')
 
     Calculates the x and y component of the PVO momentum diagnostic while assuming no variation in the 
     coriolis parameter or variations in cell thicknesses.
@@ -656,7 +706,6 @@ def PVO_nulcalc(u_cube, v_cube, ff_f, e1u, e1v, e2u, e2v, e1f, e2f, e3u, e3v, tm
 
     """
 
-    #Calculate x and y volume fluxes
     uflux = u_cube.data * e2u * e3u
     vflux = v_cube.data * e1v * e3v
 
