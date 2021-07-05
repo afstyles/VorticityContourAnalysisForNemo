@@ -260,11 +260,11 @@ def run_VCAN(data_dir, out_label, sf_zint_log, vort_diag_log, cont_int_log, mode
         print("Calculating the barotropic vorticity diagnostics")
 
         #Calculate components of PVO momentum diagnostic
-        u_bet_cube, v_bet_cube = VortDiagnostics.PVO_betcalc(u_cube, v_cube, ff_f, e1u, e1v, e2u, e2v, e1f, e2f, e3u, e3v, tmask, model=model.lower() )
+        u_bet_cube, v_bet_cube = VortDiagnostics.PVO_betcalc(u_cube, v_cube, ff_f, e1u, e1v, e2u, e2v, e1f, e2f, e3u, e3v, tmask, model=model.lower(), fscheme=fscheme.lower() )
         u_prc_cube, v_prc_cube = VortDiagnostics.PVO_prccalc(u_cube, v_cube, ff_f, e1u, e1v, e2u, e2v, e1f, e2f, e3u, e3v, 
                                                             e3t, tmask, fscheme=fscheme.lower(), model=model.lower())
         
-        u_nul_cube, v_nul_cube = VortDiagnostics.PVO_nulcalc(u_cube, v_cube, ff_f, e1u, e1v, e2u, e2v, e1f, e2f, e3u, e3v, tmask, model=model.lower())
+        u_nul_cube, v_nul_cube = VortDiagnostics.PVO_nulcalc(u_cube, v_cube, ff_f, e1u, e1v, e2u, e2v, e1f, e2f, e3u, e3v, tmask, model=model.lower(), fscheme=fscheme.lower())
         
         u_pvo2_cube, v_pvo2_cube = VortDiagnostics.PVO_fullcalc(u_cube, v_cube, ff_f, e1u, e1v, e2u, e2v, e1f, e2f, e3u, e3v, 
                                                             e3t, tmask, fscheme=fscheme.lower(), model=model.lower())
