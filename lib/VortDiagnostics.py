@@ -550,19 +550,16 @@ def PVO_fullcalc(u_cube, v_cube, ff_f, e1u, e1v, e2u, e2v, e1f, e2f, e3u, e3v, e
 
     #Calculate x component of PVO momentum diagnostic
     if fscheme == 'een_0' or fscheme == 'een_1':
-        print("Calculating uPVO according to EEN scheme")
         uPVO = (1/12.0)*(1/e1u)*(   f3_ne      * vflux 
                                     + ip1(f3_nw) * ip1(vflux)
                                     + f3_se      * jm1(vflux)
                                     + ip1(f3_sw) * ip1(jm1(vflux)) )
 
     elif fscheme == 'ens':
-        print("Calculating uPVO according to ENS scheme")
         uPVO = (1/8.0)*(1/e1u)*( jm1(vflux) + ip1(jm1(vflux))
                                    + vflux  +     ip1(vflux))*(jm1(zwz) + zwz)
 
     elif fscheme == 'ene':
-        print("Calculating uPVO according to ENE scheme")
         uPVO = (1/4.0)*(1/e1u)*( jm1(zwz)*( jm1(vflux) + ip1(jm1(vflux)) )
                                 +    zwz *(     vflux +      ip1(vflux)  ) )
 
@@ -593,19 +590,16 @@ def PVO_fullcalc(u_cube, v_cube, ff_f, e1u, e1v, e2u, e2v, e1f, e2f, e3u, e3v, e
 
     #Calculate y component of PVO momentum diagnostic
     if fscheme == 'een_0' or fscheme == 'een_1':
-        print("Calculating vPVO according to EEN scheme")
         vPVO = -(1/12.0)*(1/e2v)*(  jp1(f3_sw) * im1(jp1(uflux))
                                 + jp1(f3_se) * jp1(uflux)
                                     + f3_nw  * im1(uflux)
                                     + f3_ne  * uflux )
     
     elif fscheme == 'ens':
-        print("Calculating vPVO according to ENS scheme")
         vPVO = -(1/8.0)*(1/e2v)*(   im1(uflux) + im1(jp1(uflux)) 
                                     +   uflux  +     jp1(uflux))*(im1(zwz) + zwz)
     
     elif fscheme == 'ene':
-        print("Calculating vPVO according to ENE scheme")
         vPVO = -(1/4.0)*(1/e2v)*( im1(zwz)*( im1(uflux) + im1(jp1(uflux)) )
                                          +    zwz *(     uflux +      jp1(uflux)) )
 
@@ -706,6 +700,7 @@ def PVO_nulcalc(u_cube, v_cube, ff_f, e1u, e1v, e2u, e2v, e1f, e2f, e3u, e3v, tm
 
     """
 
+    # Use 3d flux even if not EEN scheme
     uflux = u_cube.data * e2u * e3u
     vflux = v_cube.data * e1v * e3v
 
@@ -716,8 +711,8 @@ def PVO_nulcalc(u_cube, v_cube, ff_f, e1u, e1v, e2u, e2v, e1f, e2f, e3u, e3v, tm
     ff_u = (jm1(ff_f)*(e2u-0.5*jm1(e2f)) + 0.5*jm1(e2f)*ff_f )/e2u
     ff_u[...,0,:] = ff_f[...,0,:]
     
-    #Calculate the x component of PVO
-    uPVO = (1/12.0)*(3*ff_u/e1u)*(1/e3u)*(     vflux 
+    #Calculate the x component of PVO (valid form for all fschemes)
+    uPVO = (1/4.0)*(ff_u/e1u)*(1/e3u)*(     vflux 
                                 + ip1(vflux)
                                 + jm1(vflux)
                                 + ip1(jm1(vflux)) )
@@ -746,7 +741,7 @@ def PVO_nulcalc(u_cube, v_cube, ff_f, e1u, e1v, e2u, e2v, e1f, e2f, e3u, e3v, tm
     ff_v[...,:,0] = ff_f[...,:,0]
     
     #Calculate the y component of PVO
-    vPVO = -(1/12.0)*(3*ff_v/e2v)*(1/e3v)*( im1(jp1(uflux))
+    vPVO = -(1/4.0)*(ff_v/e2v)*(1/e3v)*( im1(jp1(uflux))
                                              + jp1(uflux)
                                              + im1(uflux)
                                              + uflux )
@@ -785,7 +780,7 @@ def PVO_nulcalc(u_cube, v_cube, ff_f, e1u, e1v, e2u, e2v, e1f, e2f, e3u, e3v, tm
     u_nul_cube.add_aux_coord(lat, [2,3])
     u_nul_cube.add_aux_coord(lon, [2,3])
     u_nul_cube.add_aux_coord(ff_u_coord, [2,3])
-    u_nul_cube.attributes = {'model':model}
+    u_nul_cube.attributes = {'model':model, 'fscheme':fscheme}
 
     v_nul_cube = Cube(vPVO, dim_coords_and_dims=[(time_coord,0)])
     v_nul_cube.long_name     = 'y component of PVO (assuming constant f and cell thickness)'
@@ -794,7 +789,7 @@ def PVO_nulcalc(u_cube, v_cube, ff_f, e1u, e1v, e2u, e2v, e1f, e2f, e3u, e3v, tm
     v_nul_cube.add_aux_coord(lat, [2,3])
     v_nul_cube.add_aux_coord(lon, [2,3])
     v_nul_cube.add_aux_coord(ff_v_coord, [2,3])
-    v_nul_cube.attributes = {'model':model}
+    v_nul_cube.attributes = {'model':model, 'fscheme':fscheme}
 
     return u_nul_cube, v_nul_cube
 
@@ -807,7 +802,7 @@ def PVO_nulcalc(u_cube, v_cube, ff_f, e1u, e1v, e2u, e2v, e1f, e2f, e3u, e3v, tm
 #                ______                              
 #               |______|                             
 
-def PVO_betcalc(u_cube, v_cube, ff_f, e1u, e1v, e2u, e2v, e1f, e2f, e3u, e3v, tmask, model='global'):
+def PVO_betcalc(u_cube, v_cube, ff_f, e1u, e1v, e2u, e2v, e1f, e2f, e3u, e3v, tmask, model='global', fscheme ='een_0'):
     """
     PVO_betacalc(u_cube, v_cube, ff_f, e1u, e1v, e2u, e2v, e1f, e2f, e3u, e3v, tmask, model='global')
 
@@ -843,22 +838,26 @@ def PVO_betcalc(u_cube, v_cube, ff_f, e1u, e1v, e2u, e2v, e1f, e2f, e3u, e3v, tm
     from iris.cube import Cube
     from iris.coords import AuxCoord
     
-    #Calculate f triads (neglecting variations in e3f)
-    f3_ne = (    ff_f  + im1(ff_f) +     jm1(ff_f))
-    f3_nw = (    ff_f  + im1(ff_f) + im1(jm1(ff_f))) 
-    f3_se = (    ff_f  + jm1(ff_f) + im1(jm1(ff_f))) 
-    f3_sw = (im1(ff_f) + jm1(ff_f) + im1(jm1(ff_f))) 
+    if fscheme == 'een_0' or fscheme == 'een_1':
+        #Calculate f triads (neglecting variations in e3f)
+        f3_ne = (    ff_f  + im1(ff_f) +     jm1(ff_f))
+        f3_nw = (    ff_f  + im1(ff_f) + im1(jm1(ff_f))) 
+        f3_se = (    ff_f  + jm1(ff_f) + im1(jm1(ff_f))) 
+        f3_sw = (im1(ff_f) + jm1(ff_f) + im1(jm1(ff_f))) 
 
-    #Then set first row and column to zero as done in NEMO
-    f3_ne[...,0,:] = 0
-    f3_nw[...,0,:] = 0
-    f3_se[...,0,:] = 0
-    f3_sw[...,0,:] = 0
+        #Then set first row and column to zero as done in NEMO
+        f3_ne[...,0,:] = 0
+        f3_nw[...,0,:] = 0
+        f3_se[...,0,:] = 0
+        f3_sw[...,0,:] = 0
 
-    f3_ne[...,:,0] = 0
-    f3_nw[...,:,0] = 0
-    f3_se[...,:,0] = 0
-    f3_sw[...,:,0] = 0
+        f3_ne[...,:,0] = 0
+        f3_nw[...,:,0] = 0
+        f3_se[...,:,0] = 0
+        f3_sw[...,:,0] = 0
+
+    else:
+        zwz = np.ma.copy(np.broadcast_to(ff_f, e3u.shape))
 
     #Calculate x and y volume fluxes
     uflux = u_cube.data * e2u * e3u
@@ -867,11 +866,26 @@ def PVO_betcalc(u_cube, v_cube, ff_f, e1u, e1v, e2u, e2v, e1f, e2f, e3u, e3v, tm
     uflux[uflux.mask] = 0.0
     vflux[vflux.mask] = 0.0
 
+
     #Calculate the x component of PVO
-    uPVO = (1/12.0)*(1/e1u)*(1/e3u)*(   f3_ne      * vflux 
-                                + ip1(f3_nw) * ip1(vflux)
-                                + f3_se      * jm1(vflux)
-                                + ip1(f3_sw) * ip1(jm1(vflux)) )
+    if fscheme == 'een_0' or fscheme == 'een_1':
+        uPVO = (1/12.0)*(1/e1u)*(1/e3u)*(   f3_ne      * vflux 
+                                    + ip1(f3_nw) * ip1(vflux)
+                                    + f3_se      * jm1(vflux)
+                                    + ip1(f3_sw) * ip1(jm1(vflux)) )
+
+    elif fscheme == 'ens':
+        uPVO = (1/8.0)*(1/e1u)*(1/e3u)*( jm1(vflux) + ip1(jm1(vflux))
+                                           + vflux  +     ip1(vflux))*(jm1(zwz) + zwz)
+
+    elif fscheme == 'ene':
+        uPVO = (1/4.0)*(1/e1u)*(1/e3u)*( jm1(zwz)*( jm1(vflux) + ip1(jm1(vflux)) )
+                                        +    zwz *(     vflux +      ip1(vflux)  ) )
+
+    else: 
+        print(f">> unknown Coriolis scheme >> {fscheme} ")
+        return
+
 
     #Set edge values to zero as done in NEMO
     uPVO[...,0 ,: ] = 0.0
@@ -893,10 +907,23 @@ def PVO_betcalc(u_cube, v_cube, ff_f, e1u, e1v, e2u, e2v, e1f, e2f, e3u, e3v, tm
     uPVO = np.ma.masked_array(uPVO.data, mask=u_cube.data.mask)
 
     #Calculate the y component of PVO
-    vPVO = -(1/12.0)*(1/e2v)*(1/e3v)*(  jp1(f3_sw) * im1(jp1(uflux))
-                             + jp1(f3_se) * jp1(uflux)
-                                 + f3_nw  * im1(uflux)
-                                 + f3_ne  * uflux )
+    if fscheme == 'een_0' or fscheme == 'een_1':
+        vPVO = -(1/12.0)*(1/e2v)*(1/e3v)*(  jp1(f3_sw) * im1(jp1(uflux))
+                                + jp1(f3_se) * jp1(uflux)
+                                    + f3_nw  * im1(uflux)
+                                    + f3_ne  * uflux )
+
+    elif fscheme == 'ens':
+        vPVO = -(1/8.0)*(1/e2v)*(1/e3v)*(   im1(uflux) + im1(jp1(uflux)) 
+                                    +   uflux  +     jp1(uflux))*(im1(zwz) + zwz)
+    
+    elif fscheme == 'ene':
+        vPVO = -(1/4.0)*(1/e2v)*(1/e3v)*( im1(zwz)*( im1(uflux) + im1(jp1(uflux)) )
+                                         +    zwz *(     uflux +      jp1(uflux)) )
+
+    else: 
+        print(f">> unknown Coriolis scheme >> {fscheme} ")
+        return
 
     #Set edge values to zero as done in NEMO
     vPVO[...,0 ,: ] = 0
@@ -928,7 +955,7 @@ def PVO_betcalc(u_cube, v_cube, ff_f, e1u, e1v, e2u, e2v, e1f, e2f, e3u, e3v, tm
     u_bet_cube.units         = 'm/s2'
     u_bet_cube.add_aux_coord(lat, [2,3])
     u_bet_cube.add_aux_coord(lon, [2,3])
-    u_bet_cube.attributes = {'model':model}
+    u_bet_cube.attributes = {'model':model, 'fscheme':fscheme}
 
     v_bet_cube = Cube(vPVO, dim_coords_and_dims=[(time_coord,0)])
     v_bet_cube.long_name     = 'y component of PVO (assuming constant cell thickness)'
@@ -936,7 +963,7 @@ def PVO_betcalc(u_cube, v_cube, ff_f, e1u, e1v, e2u, e2v, e1f, e2f, e3u, e3v, tm
     v_bet_cube.units         = 'm/s2'
     v_bet_cube.add_aux_coord(lat, [2,3])
     v_bet_cube.add_aux_coord(lon, [2,3])
-    v_bet_cube.attributes = {'model':model}
+    v_bet_cube.attributes = {'model':model, 'fscheme':fscheme}
 
     return u_bet_cube, v_bet_cube
 
@@ -993,52 +1020,59 @@ def PVO_prccalc(u_cube, v_cube, ff_f, e1u, e1v, e2u, e2v, e1f, e2f, e3u, e3v, e3
     v_prc_cube - IRIS cube, y component of the recreated PVO momentum diagnostic  (t,z,y,x) [m/s2]
 
     """
+    if fscheme == 'een_0' or fscheme == 'een_1':
+        #First determine f cell thicknesses
+        e3t_copy = np.ma.copy(e3t)
+        e3t_copy[tmask] = 0.0
+        
+        if fscheme == 'een_0':
+            e3f = (e3t_copy + ip1(e3t_copy) + jp1(e3t_copy) + ip1(jp1(e3t_copy)))/4
 
-    #First determine f cell thicknesses
-    e3t_copy = np.ma.copy(e3t)
-    e3t_copy[tmask] = 0.0
-    
-    if fscheme == 'een_0':
-        e3f = (e3t_copy + ip1(e3t_copy) + jp1(e3t_copy) + ip1(jp1(e3t_copy)))/4
+        else:
+            num_masked_t = np.sum([tmask,ip1(tmask),jp1(tmask), ip1(jp1(tmask))], axis=0)
+            e3f  = (e3t_copy + ip1(e3t_copy) + jp1(e3t_copy) + ip1(jp1(e3t_copy)))/(4-num_masked_t)
+            
+            e3f[num_masked_t == 4] = 0.0
+
+        #Set edge values to zero as done in NEMO
+        e3f[...,-1,:] = 0.0
+        e3f[...,:,-1] = 0.0
+
+        #Calculate 1/e3f
+        inv_e3f = 1/e3f
+
+        #Set areas divided by zero to zero
+        inv_e3f[e3f==0.0] = 0.0
+
+        if np.ma.is_masked(inv_e3f): inv_e3f = inv_e3f.data
+
+        #Calculate f triads (neglecting variations in f)
+        e3_ne = (    inv_e3f  + im1(inv_e3f) +     jm1(inv_e3f))
+        e3_nw = (    inv_e3f  + im1(inv_e3f) + im1(jm1(inv_e3f))) 
+        e3_se = (    inv_e3f  + jm1(inv_e3f) + im1(jm1(inv_e3f))) 
+        e3_sw = (im1(inv_e3f) + jm1(inv_e3f) + im1(jm1(inv_e3f))) 
+
+        #Then set first row and column to zero as done in NEMO
+        e3_ne[...,0,:] = 0
+        e3_nw[...,0,:] = 0
+        e3_se[...,0,:] = 0
+        e3_sw[...,0,:] = 0
+
+        e3_ne[...,:,0] = 0
+        e3_nw[...,:,0] = 0
+        e3_se[...,:,0] = 0
+        e3_sw[...,:,0] = 0
+
+        #Calculate x and y fluxes
+        uflux = u_cube.data * e2u * e3u
+        vflux = v_cube.data * e1v * e3v
 
     else:
-        num_masked_t = np.sum([tmask,ip1(tmask),jp1(tmask), ip1(jp1(tmask))], axis=0)
-        e3f  = (e3t_copy + ip1(e3t_copy) + jp1(e3t_copy) + ip1(jp1(e3t_copy)))/(4-num_masked_t)
-        
-        e3f[num_masked_t == 4] = 0.0
+        zwz = np.ma.copy(np.broadcast_to(ff_f, e3u.shape))
 
-    #Set edge values to zero as done in NEMO
-    e3f[...,-1,:] = 0.0
-    e3f[...,:,-1] = 0.0
+        uflux = u_cube.data * e2u
+        vflux = v_cube.data * e1v
 
-    #Calculate 1/e3f
-    inv_e3f = 1/e3f
-
-    #Set areas divided by zero to zero
-    inv_e3f[e3f==0.0] = 0.0
-
-    if np.ma.is_masked(inv_e3f): inv_e3f = inv_e3f.data
-
-    #Calculate f triads (neglecting variations in f)
-    e3_ne = (    inv_e3f  + im1(inv_e3f) +     jm1(inv_e3f))
-    e3_nw = (    inv_e3f  + im1(inv_e3f) + im1(jm1(inv_e3f))) 
-    e3_se = (    inv_e3f  + jm1(inv_e3f) + im1(jm1(inv_e3f))) 
-    e3_sw = (im1(inv_e3f) + jm1(inv_e3f) + im1(jm1(inv_e3f))) 
-
-    #Then set first row and column to zero as done in NEMO
-    e3_ne[...,0,:] = 0
-    e3_nw[...,0,:] = 0
-    e3_se[...,0,:] = 0
-    e3_sw[...,0,:] = 0
-
-    e3_ne[...,:,0] = 0
-    e3_nw[...,:,0] = 0
-    e3_se[...,:,0] = 0
-    e3_sw[...,:,0] = 0
-
-    #Calculate x and y fluxes
-    uflux = u_cube.data * e2u * e3u
-    vflux = v_cube.data * e1v * e3v
 
     uflux[uflux.mask] = 0.0
     vflux[vflux.mask] = 0.0
@@ -1048,10 +1082,24 @@ def PVO_prccalc(u_cube, v_cube, ff_f, e1u, e1v, e2u, e2v, e1f, e2f, e3u, e3v, e3
     ff_u[...,0,:] = ff_f[...,0,:]
 
     #Calculate the x component of PVO
-    uPVO = (1/12.0)*(ff_u/e1u)*(   e3_ne      * vflux 
-                                + ip1(e3_nw) * ip1(vflux)
-                                + e3_se      * jm1(vflux)
-                                + ip1(e3_sw) * ip1(jm1(vflux)) )
+    if fscheme == 'een_0' or fscheme == 'een_1':
+        uPVO = (1/12.0)*(ff_u/e1u)*(   e3_ne      * vflux 
+                                    + ip1(e3_nw) * ip1(vflux)
+                                    + e3_se      * jm1(vflux)
+                                    + ip1(e3_sw) * ip1(jm1(vflux)) )
+
+    elif fscheme == 'ens':
+        uPVO = (1/4.0)*(ff_u/e1u)*( jm1(vflux) + ip1(jm1(vflux))
+                                   + vflux  +     ip1(vflux))
+
+    elif fscheme == 'ene':
+        uPVO = (1/4.0)*(ff_u/e1u)*( jm1(vflux) + ip1(jm1(vflux)) 
+                                +       vflux +      ip1(vflux)  ) 
+
+    else: 
+        print(f">> unknown Coriolis scheme >> {fscheme} ")
+        return
+                            
 
     #Set edge values to zero as done in NEMO
     uPVO[...,0 ,: ] = 0.0
@@ -1076,10 +1124,23 @@ def PVO_prccalc(u_cube, v_cube, ff_f, e1u, e1v, e2u, e2v, e1f, e2f, e3u, e3v, e3
     ff_v[...,:,0] = ff_f[...,:,0]
 
     #Calculate the y component of PVO
-    vPVO = -(1/12.0)*(ff_v/e2v)*(  jp1(e3_sw) * im1(jp1(uflux))
-                             + jp1(e3_se) * jp1(uflux)
-                                 + e3_nw  * im1(uflux)
-                                 + e3_ne  * uflux )
+    if fscheme == 'een_0' or fscheme =='een_1':
+        vPVO = -(1/12.0)*(ff_v/e2v)*(  jp1(e3_sw) * im1(jp1(uflux))
+                                + jp1(e3_se) * jp1(uflux)
+                                    + e3_nw  * im1(uflux)
+                                    + e3_ne  * uflux )
+
+    elif fscheme == 'ens':
+        vPVO = -(1/4.0)*(ff_v/e2v)*(   im1(uflux) + im1(jp1(uflux)) 
+                                    +   uflux  +     jp1(uflux))
+    
+    elif fscheme == 'ene':
+        vPVO = -(1/4.0)*(ff_v/e2v)*( ( im1(uflux) + im1(jp1(uflux)) )
+                                    +(     uflux +      jp1(uflux)) )
+
+    else: 
+        print(f">> unknown Coriolis scheme >> {fscheme} ")
+        return
 
     #Set the edge values to zero as done in NEMO
     vPVO[...,0 ,: ] = 0

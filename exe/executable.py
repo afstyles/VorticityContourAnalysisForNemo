@@ -52,9 +52,10 @@ if model.lower() == "global":
     
 if model.lower() == "gyre":  domcfg_path = os.path.abspath(data_dir + '/mesh_mask.nc')
 
-fscheme = 'een_1'   # = 'een_0' --> The configuration uses the EEN vorticity scheme with nn_een_e3f = 0
+fscheme = 'een_0'   # = 'een_0' --> The configuration uses the EEN vorticity scheme with nn_een_e3f = 0
                     # = 'een_1' --> The configuration uses the EEN vorticity scheme with nn_een_e3f = 1
-                    # Use een_1 if the model used the ENE or ENS vorticity scheme. Recreations of PVO are not exact but are very close.
+                    # = 'ens' --> The configuration uses the ENS vorticity scheme
+                    # = 'ene' --> The configuration uses the ENE vorticity scheme
 
 # Minimum and maximum i and j indices
 if model.lower() == "global":
