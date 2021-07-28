@@ -37,8 +37,8 @@ from CGridOperations import im1, ip1, jm1, jp1, roll_and_mask
 #                                     |___/                                    
      
 def VortDiagnostic2D(u_cube, v_cube, 
-                    ukeg_cube, urvo_cube, upvo_cube, uhpg_cube, uldf_cube, uzdf_cube, uzad_cube, utot_cube, ubet_cube, uprc_cube, upvo2_cube, unul_cube,
-                    vkeg_cube, vrvo_cube, vpvo_cube, vhpg_cube, vldf_cube, vzdf_cube, vzad_cube, vtot_cube, vbet_cube, vprc_cube, vpvo2_cube, vnul_cube,
+                    ukeg_cube, urvo_cube, upvo_cube, uhpg_cube, uldf_cube, uzdf_cube, uzad_cube, utot_cube, ubet_cube, uprc_cube, upvo2_cube, unul_cube, u_tau_cube,
+                    vkeg_cube, vrvo_cube, vpvo_cube, vhpg_cube, vldf_cube, vzdf_cube, vzad_cube, vtot_cube, vbet_cube, vprc_cube, vpvo2_cube, vnul_cube, v_tau_cube,
                     ff_f, e3u, e3v, e3t, e1u , e2u, e1v, e2v, e1f, e2f, tmask):
     """
     VortDiagnostic2D(u_cube, v_cube, 
@@ -140,6 +140,7 @@ def VortDiagnostic2D(u_cube, v_cube,
     uprc_zint  = np.sum(uprc_cube.data  * e3u, axis = -3)
     upvo2_zint = np.sum(upvo2_cube.data * e3u, axis = -3)
     unul_zint  = np.sum(unul_cube.data  * e3u, axis = -3)
+    uwnd_zint  = u_tau_cube.data
 
     v_zint     = np.sum(v_cube.data     * e3v, axis = -3)
     vkeg_zint  = np.sum(vkeg_cube.data  * e3v, axis = -3)
@@ -154,27 +155,33 @@ def VortDiagnostic2D(u_cube, v_cube,
     vprc_zint  = np.sum(vprc_cube.data  * e3v, axis = -3)
     vpvo2_zint = np.sum(vpvo2_cube.data * e3v, axis = -3)
     vnul_zint  = np.sum(vnul_cube.data  * e3v, axis = -3)
+    vwnd_zint = v_tau_cube.data
     
-    #Approximately separate zdf into wind and friction by integrating over partial depth >>>
-    depthu = np.cumsum(e3u, axis=0) - np.broadcast_to(0.5*e3u[0,...], e3u.shape)
-    depthv = np.cumsum(e3v, axis=0) - np.broadcast_to(0.5*e3v[0,...], e3v.shape)
-    
-    depthu = np.broadcast_to(depthu, uzdf_cube.shape)
-    depthv = np.broadcast_to(depthv, vzdf_cube.shape)
+    # h_u = np.sum(np.ma.masked_array(e3u,mask=uzdf_cube.data.mask[0,...]), axis=-3)
+    # h_v = np.sum(np.ma.masked_array(e3v,mask=vzdf_cube.data.mask[0,...]), axis=-3)
 
-    uwnd_mask = (depthu > 100)
-    vwnd_mask = (depthv > 100)
+    # uwnd_zint = u_tau_cube.data*e3u[0,...]
+    # vwnd_zint = v_tau_cube.data*e3v[0,...]
+    # Approximately separate zdf into wind and friction by integrating over partial depth >>>
+    # depthu = np.cumsum(e3u, axis=0) - np.broadcast_to(0.5*e3u[0,...], e3u.shape)
+    # depthv = np.cumsum(e3v, axis=0) - np.broadcast_to(0.5*e3v[0,...], e3v.shape)
     
-    uwnd = uzdf_cube.data
-    mask = np.ma.mask_or(uwnd.mask, uwnd_mask)
-    uwnd = np.ma.masked_array(uwnd, mask=mask)
+    # depthu = np.broadcast_to(depthu, uzdf_cube.shape)
+    # depthv = np.broadcast_to(depthv, vzdf_cube.shape)
+
+    # uwnd_mask = (depthu > 100)
+    # vwnd_mask = (depthv > 100)
     
-    vwnd = vzdf_cube.data
-    mask = np.ma.mask_or(vwnd.mask, vwnd_mask)
-    vwnd = np.ma.masked_array(vwnd, mask=mask)
+    # uwnd = uzdf_cube.data
+    # mask = np.ma.mask_or(uwnd.mask, uwnd_mask)
+    # uwnd = np.ma.masked_array(uwnd, mask=mask)
     
-    uwnd_zint = np.sum(uwnd*e3u, axis = -3)
-    vwnd_zint = np.sum(vwnd*e3v, axis = -3)
+    # vwnd = vzdf_cube.data
+    # mask = np.ma.mask_or(vwnd.mask, vwnd_mask)
+    # vwnd = np.ma.masked_array(vwnd, mask=mask)
+    
+    # uwnd_zint = np.sum(uwnd*e3u, axis = -3)
+    # vwnd_zint = np.sum(vwnd*e3v, axis = -3)
     
     #>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
     curl_keg =      CGO.kcurl_orca(ukeg_zint, vkeg_zint, e1u, e2v, e1f, e2f)

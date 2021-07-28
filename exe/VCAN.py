@@ -122,6 +122,8 @@ def run_VCAN(data_dir, out_label, sf_zint_log, vort_diag_log, cont_int_log, mode
             u_zdf_cube = CubeListExtract(data_list, 'utrd_zdf')
             u_zad_cube = CubeListExtract(data_list, 'utrd_zad')
             u_tot_cube = CubeListExtract(data_list, 'utrd_tot')
+            u_tau_cube = CubeListExtract(data_list, 'tauuo')/1026
+
             
             v_keg_cube = CubeListExtract(data_list, 'vtrd_keg')
             v_rvo_cube = CubeListExtract(data_list, 'vtrd_rvo')
@@ -131,6 +133,8 @@ def run_VCAN(data_dir, out_label, sf_zint_log, vort_diag_log, cont_int_log, mode
             v_zdf_cube = CubeListExtract(data_list, 'vtrd_zdf')
             v_zad_cube = CubeListExtract(data_list, 'vtrd_zad')
             v_tot_cube = CubeListExtract(data_list, 'vtrd_tot')
+            v_tau_cube = CubeListExtract(data_list, 'tauvo')/1026
+
 
     if model.lower() == "gyre":
         u_cube = CubeListExtract(data_list,'vozocrtx')
@@ -145,6 +149,7 @@ def run_VCAN(data_dir, out_label, sf_zint_log, vort_diag_log, cont_int_log, mode
             u_zdf_cube = CubeListExtract(data_list, 'utrd_swzdf')
             u_zad_cube = CubeListExtract(data_list, 'utrd_swzad')
             u_tot_cube = CubeListExtract(data_list, 'utrd_swtot')
+            u_tau_cube = CubeListExtract(data_list, 'sozotaux')/1026
             
             v_keg_cube = CubeListExtract(data_list, 'vtrd_swkeg')
             v_rvo_cube = CubeListExtract(data_list, 'vtrd_swrvo')
@@ -154,10 +159,13 @@ def run_VCAN(data_dir, out_label, sf_zint_log, vort_diag_log, cont_int_log, mode
             v_zdf_cube = CubeListExtract(data_list, 'vtrd_swzdf')
             v_zad_cube = CubeListExtract(data_list, 'vtrd_swzad')
             v_tot_cube = CubeListExtract(data_list, 'vtrd_swtot')
+            v_tau_cube = CubeListExtract(data_list, 'sometauy')/1026
 
         # Outputs from GYRE are not masked, we apply the masks here
         umask_cube = CubeListExtract(grid_list, 'umask')
         vmask_cube = CubeListExtract(grid_list, 'vmask')
+        umaskutil_cube = CubeListExtract(grid_list, 'umaskutil')
+        vmaskutil_cube = CubeListExtract(grid_list, 'vmaskutil')
 
         u_cube = apply_mask(u_cube, umask_cube)
         v_cube = apply_mask(v_cube, vmask_cube)
@@ -171,6 +179,7 @@ def run_VCAN(data_dir, out_label, sf_zint_log, vort_diag_log, cont_int_log, mode
             u_zdf_cube = apply_mask(u_zdf_cube, umask_cube)
             u_zad_cube = apply_mask(u_zad_cube, umask_cube)
             u_tot_cube = apply_mask(u_tot_cube, umask_cube)
+            u_tau_cube = apply_mask(u_tau_cube, umaskutil_cube)
 
             v_keg_cube = apply_mask(v_keg_cube, vmask_cube)
             v_rvo_cube = apply_mask(v_rvo_cube, vmask_cube)
@@ -180,6 +189,7 @@ def run_VCAN(data_dir, out_label, sf_zint_log, vort_diag_log, cont_int_log, mode
             v_zdf_cube = apply_mask(v_zdf_cube, vmask_cube)
             v_zad_cube = apply_mask(v_zad_cube, vmask_cube)
             v_tot_cube = apply_mask(v_tot_cube, vmask_cube)
+            v_tau_cube = apply_mask(v_tau_cube, vmaskutil_cube)
 
     # Perform a simple repair for the loaded data cubes. Rename the auxilliary time coordinate to "aux_time" instead of "time"
     u_cube = coord_repair(u_cube)
@@ -194,6 +204,7 @@ def run_VCAN(data_dir, out_label, sf_zint_log, vort_diag_log, cont_int_log, mode
         u_zdf_cube = coord_repair(u_zdf_cube)
         u_zad_cube = coord_repair(u_zad_cube)
         u_tot_cube = coord_repair(u_tot_cube)
+        u_tau_cube = coord_repair(u_tau_cube)
 
         v_keg_cube = coord_repair(v_keg_cube)
         v_rvo_cube = coord_repair(v_rvo_cube)
@@ -203,6 +214,7 @@ def run_VCAN(data_dir, out_label, sf_zint_log, vort_diag_log, cont_int_log, mode
         v_zdf_cube = coord_repair(v_zdf_cube)
         v_zad_cube = coord_repair(v_zad_cube)
         v_tot_cube = coord_repair(v_tot_cube)
+        v_tau_cube = coord_repair(v_tau_cube)
 
     #Load cell widths and thicknesses. Variable names should be consistent between models
     e1u_cube = CubeListExtract(grid_list, 'e1u')
@@ -279,9 +291,9 @@ def run_VCAN(data_dir, out_label, sf_zint_log, vort_diag_log, cont_int_log, mode
         iris.save(v_pvo2_cube,out_dir + f'/v_pvo2.{out_label}.nc')
 
         vort_diag_dict = VortDiagnostics.VortDiagnostic2D(u_cube, v_cube, u_keg_cube, u_rvo_cube, u_pvo_cube, u_hpg_cube,
-                                            u_ldf_cube, u_zdf_cube, u_zad_cube, u_tot_cube, u_bet_cube, u_prc_cube, u_pvo2_cube, u_nul_cube,
+                                            u_ldf_cube, u_zdf_cube, u_zad_cube, u_tot_cube, u_bet_cube, u_prc_cube, u_pvo2_cube, u_nul_cube, u_tau_cube,
                                             v_keg_cube, v_rvo_cube, v_pvo_cube, v_hpg_cube,
-                                            v_ldf_cube, v_zdf_cube, v_zad_cube, v_tot_cube, v_bet_cube, v_prc_cube, v_pvo2_cube, v_nul_cube,
+                                            v_ldf_cube, v_zdf_cube, v_zad_cube, v_tot_cube, v_bet_cube, v_prc_cube, v_pvo2_cube, v_nul_cube, v_tau_cube,
                                             ff_f, e3u, e3v, e3t, e1u, e2u, e1v, e2v, e1f, e2f, tmask)
         
         for vort_label in vort_diag_dict:
