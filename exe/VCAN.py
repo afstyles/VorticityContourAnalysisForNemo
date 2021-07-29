@@ -122,7 +122,8 @@ def run_VCAN(data_dir, out_label, sf_zint_log, vort_diag_log, cont_int_log, mode
             u_zdf_cube = CubeListExtract(data_list, 'utrd_zdf')
             u_zad_cube = CubeListExtract(data_list, 'utrd_zad')
             u_tot_cube = CubeListExtract(data_list, 'utrd_tot')
-            u_tau_cube = CubeListExtract(data_list, 'tauuo')/1026
+            #u_tau_cube = CubeListExtract(data_list, 'tauuo')/1026
+            u_tau_cube = CubeListExtract(data_list, 'utrd_tau')/2
 
             
             v_keg_cube = CubeListExtract(data_list, 'vtrd_keg')
@@ -133,7 +134,8 @@ def run_VCAN(data_dir, out_label, sf_zint_log, vort_diag_log, cont_int_log, mode
             v_zdf_cube = CubeListExtract(data_list, 'vtrd_zdf')
             v_zad_cube = CubeListExtract(data_list, 'vtrd_zad')
             v_tot_cube = CubeListExtract(data_list, 'vtrd_tot')
-            v_tau_cube = CubeListExtract(data_list, 'tauvo')/1026
+            #v_tau_cube = CubeListExtract(data_list, 'tauvo')/
+            v_tau_cube = CubeListExtract(data_list, 'vtrd_tau')/2
 
 
     if model.lower() == "gyre":
