@@ -149,7 +149,8 @@ def run_VCAN(data_dir, out_label, sf_zint_log, vort_diag_log, cont_int_log, mode
             u_zdf_cube = CubeListExtract(data_list, 'utrd_swzdf')
             u_zad_cube = CubeListExtract(data_list, 'utrd_swzad')
             u_tot_cube = CubeListExtract(data_list, 'utrd_swtot')
-            u_tau_cube = CubeListExtract(data_list, 'sozotaux')/1026
+            # u_tau_cube = CubeListExtract(data_list, 'sozotaux')/1026
+            u_tau_cube = CubeListExtract(data_list, 'utrd_swtau')/2
             
             v_keg_cube = CubeListExtract(data_list, 'vtrd_swkeg')
             v_rvo_cube = CubeListExtract(data_list, 'vtrd_swrvo')
@@ -159,7 +160,8 @@ def run_VCAN(data_dir, out_label, sf_zint_log, vort_diag_log, cont_int_log, mode
             v_zdf_cube = CubeListExtract(data_list, 'vtrd_swzdf')
             v_zad_cube = CubeListExtract(data_list, 'vtrd_swzad')
             v_tot_cube = CubeListExtract(data_list, 'vtrd_swtot')
-            v_tau_cube = CubeListExtract(data_list, 'sometauy')/1026
+            # v_tau_cube = CubeListExtract(data_list, 'sometauy')/1026
+            v_tau_cube = CubeListExtract(data_list, 'vtrd_swtau')/2
 
         # Outputs from GYRE are not masked, we apply the masks here
         umask_cube = CubeListExtract(grid_list, 'umask')
