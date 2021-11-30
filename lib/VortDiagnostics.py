@@ -39,7 +39,7 @@ from CGridOperations import im1, ip1, jm1, jp1, roll_and_mask
 def VortDiagnostic2D(u_cube, v_cube, 
                     ukeg_cube, urvo_cube, upvo_cube, uhpg_cube, uldf_cube, uzdf_cube, uzad_cube, utot_cube, ubet_cube, uprc_cube, upvo2_cube, unul_cube, u_tau_cube,
                     vkeg_cube, vrvo_cube, vpvo_cube, vhpg_cube, vldf_cube, vzdf_cube, vzad_cube, vtot_cube, vbet_cube, vprc_cube, vpvo2_cube, vnul_cube, v_tau_cube,
-                    ff_f, e3u, e3v, e3t, e1u , e2u, e1v, e2v, e1f, e2f, tmask):
+                    ff_f, e3u, e3v, e3t, e1u , e2u, e1v, e2v, e1f, e2f, tmask, icelog=False, uice_cube=None, vice_cube=None):
     """
     VortDiagnostic2D(u_cube, v_cube, 
                     ukeg_cube, urvo_cube, upvo_cube, uhpg_cube, uldf_cube, uzdf_cube, uzad_cube, utot_cube, ubet_cube, unvs_cube, upvo2_cube, unul_cube,
@@ -97,7 +97,10 @@ def VortDiagnostic2D(u_cube, v_cube,
     e2f - Array of f cell widths in the y direction (y,x) [m]
 
     tmask - Mask for the t points (True = Masked)   (z,y,x) [-]
-
+    
+    icelog - Boolean = True if you want to consider sea ice stresses
+    uice_cube - IRIS cube containing accelerations associated with sea ice surface stresses in the x direction (t,y,x) [m/s2]
+    vice_cube - IRIS cube containing accelerations associated with sea ice surface stresses in the v direction (t,y,x) [m/s2]
 
     OUTPUT variables
     Returns a dictionary of IRIS cubes that are the associated vorticity diagnostics
@@ -142,6 +145,7 @@ def VortDiagnostic2D(u_cube, v_cube,
     unul_zint  = np.sum(unul_cube.data  * e3u, axis = -3)
     # uwnd_zint  = u_tau_cube.data
 
+
     v_zint     = np.sum(v_cube.data     * e3v, axis = -3)
     vkeg_zint  = np.sum(vkeg_cube.data  * e3v, axis = -3)
     vrvo_zint  = np.sum(vrvo_cube.data  * e3v, axis = -3)
@@ -160,9 +164,21 @@ def VortDiagnostic2D(u_cube, v_cube,
     # h_u = np.sum(np.ma.masked_array(e3u,mask=uzdf_cube.data.mask[0,...]), axis=-3)
     # h_v = np.sum(np.ma.masked_array(e3v,mask=vzdf_cube.data.mask[0,...]), axis=-3)
 
-    uwnd_zint = u_tau_cube.data*e3u[0,...]
-    vwnd_zint = v_tau_cube.data*e3v[0,...]
+#     uwnd_zint = u_tau_cube.data*e3u[0,...]
+#     vwnd_zint = v_tau_cube.data*e3v[0,...]
+
     
+    if icelog == True:
+        uice_zint = uice_cube.data 
+        vice_zint = vice_cube.data
+        
+        uwnd_zint = u_tau_cube.data
+        vwnd_zint = v_tau_cube.data
+        
+    else:
+        uwnd_zint = u_tau_cube.data*e3u[0,...]
+        vwnd_zint = v_tau_cube.data*e3v[0,...]
+
     # Approximately separate zdf into wind and friction by integrating over partial depth >>>
     # depthu = np.cumsum(e3u, axis=0) - np.broadcast_to(0.5*e3u[0,...], e3u.shape)
     # depthv = np.cumsum(e3v, axis=0) - np.broadcast_to(0.5*e3v[0,...], e3v.shape)
@@ -196,6 +212,9 @@ def VortDiagnostic2D(u_cube, v_cube,
     curl_wnd =      CGO.kcurl_orca(uwnd_zint, vwnd_zint, e1u, e2v, e1f, e2f)
     curl_bet =      CGO.kcurl_orca(ubet_zint, vbet_zint, e1u, e2v, e1f, e2f )
     curl_pvo2 =     CGO.kcurl_orca(upvo2_zint, vpvo2_zint, e1u, e2v, e1f, e2f )
+    
+    if icelog == True:
+        curl_ice = CGO.kcurl_orca(uice_zint, vice_zint, e1u, e2v, e1f, e2f)
 
     #Divide the momentum diagnostics by the u/v point value of f so no beta effects emerge from the curl calculation
     #Then multiply by the value of f at the f point afterwards
@@ -203,7 +222,10 @@ def VortDiagnostic2D(u_cube, v_cube,
     curl_nul = ff_f*CGO.kcurl_orca(unul_zint/ff_u, vnul_zint/ff_v, e1u, e2v, e1f, e2f )
     
     #Calculate the friction contribution from remainder of ZDF
-    curl_frc = curl_zdf - curl_wnd
+    if icelog == False:
+        curl_frc = curl_zdf - curl_wnd
+    else:
+        curl_frc = curl_zdf - curl_wnd - curl_ice
     
     #Calculate total advective contribution
     curl_adv = curl_keg + curl_rvo + curl_zad
@@ -349,6 +371,15 @@ def VortDiagnostic2D(u_cube, v_cube,
     curl_prc_cube.add_aux_coord(lat, [-2,-1])
     curl_prc_cube.add_aux_coord(lon, [-2,-1])
     curl_prc_cube.attributes = uprc_cube.attributes
+    
+    if icelog == True:
+        curl_ice_cube = Cube(curl_ice, dim_coords_and_dims=[(time_coord,0)])
+        curl_ice_cube.long_name     = 'k-curl of sea ice surface stress trend'
+        curl_ice_cube.var_name      = 'curl_ice_zint'
+        curl_ice_cube.units         = 'm/s2'
+        curl_ice_cube.add_aux_coord(lat, [-2,-1])
+        curl_ice_cube.add_aux_coord(lon, [-2,-1])
+        curl_ice_cube.attributes = uice_cube.attributes
 
 
 
@@ -371,6 +402,8 @@ def VortDiagnostic2D(u_cube, v_cube,
                     'BET' :curl_bet_cube,
                     'PRC' :curl_prc_cube }
 
+    if icelog == True:
+        output_dict['ICE'] = curl_ice_cube
 
     return output_dict
 

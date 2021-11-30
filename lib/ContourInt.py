@@ -80,10 +80,11 @@ def niiler_integral2D(vort_2D_dict, sf_zint_cube, area_weights, nlevels=201, lev
             tm_vc_zint = np.mean(vc_zint_cube.data, axis=0)
             tm_vort_2D_dict = {**tm_vort_2D_dict, label:tm_vc_zint}
     
+    lon = sf_zint_cube.coord("longitude").points
+    lat = sf_zint_cube.coord("latitude").points
+
     if interpolation == 'linear':
         print("Interpolating to fine grid")
-        lon = sf_zint_cube.coord("longitude").points
-        lat = sf_zint_cube.coord("latitude").points
 
         tm_sf_zint, lon_finegrid, lat_finegrid = interp_to_finegrid(tm_sf_zint, lon, lat, res, lonlatbounds=lonlatbounds)
         
@@ -93,6 +94,24 @@ def niiler_integral2D(vort_2D_dict, sf_zint_cube, area_weights, nlevels=201, lev
             tm_vort_2D_dict[label] = tm_vc_zint
 
         area_weights = (R**2)*((res*(np.pi/180))**2)*np.cos(lat_finegrid*np.pi/180.0)
+
+    elif isinstance(lonlatbounds, tuple):  #Application of lonlatbounds without interpolation 
+        
+        lon_min = lonlatbounds[0]
+        lon_max = lonlatbounds[1]
+        lat_min = lonlatbounds[2]
+        lat_max = lonlatbounds[3]
+        
+        extramask = (lon < lon_min) + (lon > lon_max) + (lat < lat_min) + (lat > lat_max)
+        extramask = np.broadcast_to(extramask, tm_sf_zint.shape)
+
+        new_mask = np.ma.mask_or(tm_sf_zint.mask, extramask)
+        tm_sf_zint = np.ma.masked_array(tm_sf_zint, mask=new_mask)
+
+        for label in tm_vort_2D_dict:
+            tm_vc_zint = tm_vort_2D_dict[label]
+            tm_vc_zint = np.ma.masked_array(tm_vc_zint, mask=new_mask)
+
         
     integrals_out_dict, levels_out, areas_out, mask_out, contour_masks_out = contour_integral( tm_vort_2D_dict, tm_sf_zint,
                                                     area_weights, level_min=level_min, level_max=level_max, nlevels=nlevels)
@@ -411,7 +430,7 @@ def NI_ADV_calc(Ni_keg_cube, Ni_rvo_cube, Ni_zad_cube):
     
     return Ni_adv_cube
 
-def NI_ZDF_calc(Ni_wnd_cube, Ni_frc_cube):
+def NI_ZDF_calc(Ni_wnd_cube, Ni_frc_cube, icelog=False, Ni_ice_cube = None):
     """
     Combine contour integrals of the following diagnostics to calculate the vertical diffusion contribution
     """
@@ -421,7 +440,9 @@ def NI_ZDF_calc(Ni_wnd_cube, Ni_frc_cube):
     sf_level_coord = Ni_wnd_cube.coord("sf_zint_level")
     area_coord = Ni_wnd_cube.coord("enclosed_area")
     
-    Ni_zdf_cube = Cube(Ni_wnd_cube.data + Ni_frc_cube.data)
+    if icelog == False: Ni_zdf_cube = Cube(Ni_wnd_cube.data + Ni_frc_cube.data)
+    else: Ni_zdf_cube = Cube(Ni_wnd_cube.data + Ni_frc_cube.data + Ni_ice_cube.data)
+    
     Ni_zdf_cube.long_name = 'NiilerIntegral2D(ZDF)'
     Ni_zdf_cube.var_name = 'Ni2D_ZDF'
     Ni_zdf_cube.units = 'm3/s2'
