@@ -142,11 +142,11 @@ def run_VCAN(data_dir, out_label, sf_zint_log, vort_diag_log, cont_int_log, mode
             v_ice_cube = CubeListExtract(data_list, 'vtrd_tfr2d_hv')
 
     if model.lower() == "gyre":
-        # u_cube = CubeListExtract(data_list,'vozocrtx')
-        # v_cube = CubeListExtract(data_list,'vomecrty')
+        u_cube = CubeListExtract(data_list,'vozocrtx')
+        v_cube = CubeListExtract(data_list,'vomecrty')
 
-        u_cube = CubeListExtract(data_list,'uoce')
-        v_cube = CubeListExtract(data_list,'voce')
+        # u_cube = CubeListExtract(data_list,'uoce')
+        # v_cube = CubeListExtract(data_list,'voce')
 
         if vort_diag_log == True:
             u_keg_cube = CubeListExtract(data_list, 'utrd_swkeg')
@@ -353,6 +353,7 @@ def run_VCAN(data_dir, out_label, sf_zint_log, vort_diag_log, cont_int_log, mode
                     'WND' :CubeListExtract(vort_diag_list, 'curl_wnd_zint'),
                     'FRC' :CubeListExtract(vort_diag_list, 'curl_frc_zint'),
                     'FDU' :CubeListExtract(vort_diag_list, 'curl_fdu_zint'),
+                    'DIV' :CubeListExtract(vort_diag_list, 'curl_div_zint'),
                     'MLV' :CubeListExtract(vort_diag_list, 'curl_mlv_zint'),
                     'BET' :CubeListExtract(vort_diag_list, 'curl_bet_zint'),
                     'PRC' :CubeListExtract(vort_diag_list, 'curl_prc_zint')}
@@ -371,6 +372,7 @@ def run_VCAN(data_dir, out_label, sf_zint_log, vort_diag_log, cont_int_log, mode
                     'WND' :vort_diag_dict['WND'],
                     'FRC' :vort_diag_dict['FRC'],
                     'FDU' :vort_diag_dict['FDU'],
+                    'DIV' :vort_diag_dict['DIV'],
                     'MLV' :vort_diag_dict['MLV'],
                     'BET' :vort_diag_dict['BET'],
                     'PRC' :vort_diag_dict['PRC']}

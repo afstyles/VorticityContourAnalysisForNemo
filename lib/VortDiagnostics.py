@@ -212,14 +212,16 @@ def VortDiagnostic2D(u_cube, v_cube,
     curl_wnd =      CGO.kcurl_orca(uwnd_zint, vwnd_zint, e1u, e2v, e1f, e2f)
     curl_bet =      CGO.kcurl_orca(ubet_zint, vbet_zint, e1u, e2v, e1f, e2f )
     curl_pvo2 =     CGO.kcurl_orca(upvo2_zint, vpvo2_zint, e1u, e2v, e1f, e2f )
+    curl_prc =      CGO.kcurl_orca(uprc_zint, vprc_zint, e1u, e2v, e1f, e2f )
+    curl_nul =      CGO.kcurl_orca(unul_zint, vnul_zint, e1u, e2v, e1f, e2f )
     
     if icelog == True:
         curl_ice = CGO.kcurl_orca(uice_zint, vice_zint, e1u, e2v, e1f, e2f)
 
     #Divide the momentum diagnostics by the u/v point value of f so no beta effects emerge from the curl calculation
     #Then multiply by the value of f at the f point afterwards
-    curl_prc = ff_f*CGO.kcurl_orca(uprc_zint/ff_u, vprc_zint/ff_v, e1u, e2v, e1f, e2f )
-    curl_nul = ff_f*CGO.kcurl_orca(unul_zint/ff_u, vnul_zint/ff_v, e1u, e2v, e1f, e2f )
+    # curl_prc = ff_f*CGO.kcurl_orca(uprc_zint/ff_u, vprc_zint/ff_v, e1u, e2v, e1f, e2f )
+    # curl_nul = ff_f*CGO.kcurl_orca(unul_zint/ff_u, vnul_zint/ff_v, e1u, e2v, e1f, e2f )
     
     #Calculate the friction contribution from remainder of ZDF
     if icelog == False:
@@ -237,10 +239,11 @@ def VortDiagnostic2D(u_cube, v_cube,
     curl_res = ( curl_keg + curl_rvo + curl_pvo + curl_hpg 
                 + curl_ldf + curl_zdf + curl_zad - curl_tot )
         
-    #Decompose PVO into 4 meaningful parts
-    curl_fdu = PVO_divcalc(u_cube, v_cube, ff_f, e1u, e1v, e2u, e2v, e1f, e2f, e3u, e3v, curl_pvo.mask )  #f divh(U)
-    curl_mlv = curl_nul - curl_fdu  #Changes in model level
-    curl_bet = curl_bet - curl_nul  #Beta effect
+    #Decompose PVO into 5 meaningful parts
+    curl_fdu = PVO_divcalc(u_cube, v_cube, ff_f, e1u, e1v, e2u, e2v, e1f, e2f, e3u, e3v, curl_pvo.mask , f_inside=False)  #f divh(U) effect of divergences 
+    curl_div = PVO_divcalc(u_cube, v_cube, ff_f, e1u, e1v, e2u, e2v, e1f, e2f, e3u, e3v, curl_pvo.mask , f_inside=True )  # divh(fU) analytic form
+    curl_mlv = curl_nul - curl_div  #Changes in model level
+    curl_bet = curl_bet - curl_nul  #F displacement term
     curl_prc = curl_prc - curl_nul  #Partial cells
 
     #Save outputs as IRIS cubes >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
@@ -348,6 +351,13 @@ def VortDiagnostic2D(u_cube, v_cube,
     curl_fdu_cube.add_aux_coord(lat, [-2,-1])
     curl_fdu_cube.add_aux_coord(lon, [-2,-1])
     
+    curl_div_cube = Cube(curl_div, dim_coords_and_dims=[(time_coord,0)])
+    curl_div_cube.long_name     = 'Calculation of divh(fU)'
+    curl_div_cube.var_name      = 'curl_div_zint'
+    curl_div_cube.units         = 'm/s2'
+    curl_div_cube.add_aux_coord(lat, [-2,-1])
+    curl_div_cube.add_aux_coord(lon, [-2,-1])
+
     curl_mlv_cube = Cube(curl_mlv, dim_coords_and_dims=[(time_coord,0)])
     curl_mlv_cube.long_name     = 'PVO contribution due to changes in lowest model level'
     curl_mlv_cube.var_name      = 'curl_mlv_zint'
@@ -357,7 +367,7 @@ def VortDiagnostic2D(u_cube, v_cube,
     curl_mlv_cube.attributes = unul_cube.attributes
     
     curl_bet_cube = Cube(curl_bet, dim_coords_and_dims=[(time_coord,0)])
-    curl_bet_cube.long_name     = 'PVO contribution due to variations in Coriolis parameter'
+    curl_bet_cube.long_name     = 'PVO contribution due to f displacement term'
     curl_bet_cube.var_name      = 'curl_bet_zint'
     curl_bet_cube.units         = 'm/s2'
     curl_bet_cube.add_aux_coord(lat, [-2,-1])
@@ -398,6 +408,7 @@ def VortDiagnostic2D(u_cube, v_cube,
                     'RES' :curl_res_cube,
                     'PVO2':curl_pvo2_cube,
                     'FDU' :curl_fdu_cube,
+                    'DIV' :curl_div_cube,
                     'MLV' :curl_mlv_cube,
                     'BET' :curl_bet_cube,
                     'PRC' :curl_prc_cube }
@@ -416,13 +427,14 @@ def VortDiagnostic2D(u_cube, v_cube,
 #                ______                            
 #               |______|                           
 
-def PVO_divcalc(u_cube, v_cube, ff_f, e1u, e1v, e2u, e2v, e1f, e2f, e3u, e3v, fmask ):
+def PVO_divcalc(u_cube, v_cube, ff_f, e1u, e1v, e2u, e2v, e1f, e2f, e3u, e3v, fmask, f_inside=False ):
     """
-    PVO_divcalc(u_cube, v_cube, ff_f, e1u, e1v, e2u, e2v, e1f, e2f, e3u, e3v, fmask )
+    PVO_divcalc(u_cube, v_cube, ff_f, e1u, e1v, e2u, e2v, e1f, e2f, e3u, e3v, fmask, f_inside=False )
 
     Calculates the component of PVO due to the divergence of the depth integrated velocity field
 
-    Returns f * divh(U)
+    Returns f * divh(U) (if f_inside == False)
+    Returns divh(f*U)   (if f_inside == True )
     where U is the depth integrated velocity field and divh(U) is the horizontal divergence centred on the 
     fpoints of the grid
 
@@ -442,9 +454,13 @@ def PVO_divcalc(u_cube, v_cube, ff_f, e1u, e1v, e2u, e2v, e1f, e2f, e3u, e3v, fm
 
     tmask  - Mask for the t points (True=Masked)            (z,y,x) [-]
 
+    f_inside - Logical. 
+               Calculate f * divh(U) if f_inside == False (default behaviour)
+               Calculate divh(f*U) if f_inside == True
+
     Returns
 
-    PVO_div - Array of f*divh(U) centred on f points         (t,y,x) [m/s2]
+    PVO_div - Array of f*divh(U) or divh(f*U) centred on f points         (t,y,x) [m/s2]
 
 
 
@@ -457,16 +473,35 @@ def PVO_divcalc(u_cube, v_cube, ff_f, e1u, e1v, e2u, e2v, e1f, e2f, e3u, e3v, fm
     
     uflux_zint = np.sum(uflux, axis=-3)
     vflux_zint = np.sum(vflux, axis=-3)
+
+    if f_inside == False:
     
-    divhU = ( ip1(jp1(uflux_zint)) + ip1(uflux_zint) - im1(uflux_zint) - im1(jp1(uflux_zint)) 
-             +jp1(vflux_zint) + ip1(jp1(vflux_zint)) - jm1(vflux_zint) - jm1(ip1(vflux_zint)))/(4*e1f*e2f)
+        divhU = ( ip1(jp1(uflux_zint)) + ip1(uflux_zint) - im1(uflux_zint) - im1(jp1(uflux_zint)) 
+                +jp1(vflux_zint) + ip1(jp1(vflux_zint)) - jm1(vflux_zint) - jm1(ip1(vflux_zint)))/(4*e1f*e2f)
+
+    elif f_inside == True:
+
+        #Calculate the Coriolis parameter centred on u points
+        ff_u = (jm1(ff_f)*(e2u-0.5*jm1(e2f)) + 0.5*jm1(e2f)*ff_f )/e2u
+        ff_u[...,0,:] = ff_f[...,0,:]
+
+        #Calculate the Coriolis parameter centred on v points
+        ff_v = (im1(ff_f)*(e1v-0.5*im1(e1f)) + 0.5*im1(e1f)*ff_f )/e1v
+        ff_v[...,:,0] = ff_f[...,:,0]
+
+        divhU = ( ip1(jp1(ff_u*uflux_zint)) + ip1(ff_u*uflux_zint) - im1(ff_u*uflux_zint) - im1(jp1(ff_u*uflux_zint)) 
+                +jp1(ff_v*vflux_zint) + ip1(jp1(ff_v*vflux_zint)) - jm1(ff_v*vflux_zint) - jm1(ip1(ff_v*vflux_zint)))/(4*e1f*e2f)
+
+
 
     divhU[...,: ,0 ] = 0
     divhU[...,: ,-1] = 0
     divhU[...,0 ,: ] = 0
     divhU[...,-1,: ] = 0
     
-    PVO_div = - ff_f * divhU
+    if f_inside == False: PVO_div = - ff_f * divhU
+    elif f_inside == True: PVO_div = - divhU
+
     PVO_div = np.ma.masked_array(PVO_div, mask=fmask)
     
     return PVO_div
@@ -751,12 +786,16 @@ def PVO_nulcalc(u_cube, v_cube, ff_f, e1u, e1v, e2u, e2v, e1f, e2f, e3u, e3v, tm
     #Calculate the Coriolis parameter centred on the u point
     ff_u = (jm1(ff_f)*(e2u-0.5*jm1(e2f)) + 0.5*jm1(e2f)*ff_f )/e2u
     ff_u[...,0,:] = ff_f[...,0,:]
+
+    #Calculate the Coriolis parameter centred on the v point
+    ff_v = (im1(ff_f)*(e1v-0.5*im1(e1f)) + 0.5*im1(e1f)*ff_f )/e1v
+    ff_v[...,:,0] = ff_f[...,:,0]
     
     #Calculate the x component of PVO (valid form for all fschemes)
-    uPVO = (1/4.0)*(ff_u/e1u)*(1/e3u)*(     vflux 
-                                + ip1(vflux)
-                                + jm1(vflux)
-                                + ip1(jm1(vflux)) )
+    uPVO = (1/4.0)*(1/e1u)*(1/e3u)*(    ff_v*vflux 
+                                + ip1(ff_v*vflux)
+                                + jm1(ff_v*vflux)
+                                + ip1(jm1(ff_v*vflux)) )
 
     #Set edge values to zero as done in NEMO
     uPVO[...,0 ,: ] = 0.0
@@ -777,15 +816,11 @@ def PVO_nulcalc(u_cube, v_cube, ff_f, e1u, e1v, e2u, e2v, e1f, e2f, e3u, e3v, tm
     
     uPVO = np.ma.masked_array(uPVO.data, mask=u_cube.data.mask)
 
-    #Calculate the Coriolis parameter centred on the v point
-    ff_v = (im1(ff_f)*(e1v-0.5*im1(e1f)) + 0.5*im1(e1f)*ff_f )/e1v
-    ff_v[...,:,0] = ff_f[...,:,0]
-    
     #Calculate the y component of PVO
-    vPVO = -(1/4.0)*(ff_v/e2v)*(1/e3v)*( im1(jp1(uflux))
-                                             + jp1(uflux)
-                                             + im1(uflux)
-                                             + uflux )
+    vPVO = -(1/4.0)*(1/e2v)*(1/e3v)*( im1(jp1(ff_u*uflux))
+                                             + jp1(ff_u*uflux)
+                                             + im1(ff_u*uflux)
+                                             + ff_u*uflux )
 
     #Set edge values to zero as done in NEMO
     vPVO[...,0 ,: ] = 0
@@ -1122,20 +1157,24 @@ def PVO_prccalc(u_cube, v_cube, ff_f, e1u, e1v, e2u, e2v, e1f, e2f, e3u, e3v, e3
     ff_u = (jm1(ff_f)*(e2u-0.5*jm1(e2f)) + 0.5*jm1(e2f)*ff_f )/e2u
     ff_u[...,0,:] = ff_f[...,0,:]
 
+    #Calculate the Coriolis parameter centred on v points
+    ff_v = (im1(ff_f)*(e1v-0.5*im1(e1f)) + 0.5*im1(e1f)*ff_f )/e1v
+    ff_v[...,:,0] = ff_f[...,:,0]
+
     #Calculate the x component of PVO
     if fscheme == 'een_0' or fscheme == 'een_1':
-        uPVO = (1/12.0)*(ff_u/e1u)*(   e3_ne      * vflux 
-                                    + ip1(e3_nw) * ip1(vflux)
-                                    + e3_se      * jm1(vflux)
-                                    + ip1(e3_sw) * ip1(jm1(vflux)) )
+        uPVO = (1/12.0)*(1/e1u)*(   e3_ne      * ff_v*vflux 
+                                    + ip1(e3_nw) * ip1(ff_v*vflux)
+                                    + e3_se      * jm1(ff_v*vflux)
+                                    + ip1(e3_sw) * ip1(jm1(ff_v*vflux)) )
 
     elif fscheme == 'ens':
-        uPVO = (1/4.0)*(ff_u/e1u)*( jm1(vflux) + ip1(jm1(vflux))
-                                   + vflux  +     ip1(vflux))
+        uPVO = (1/4.0)*(1/e1u)*( jm1(ff_v*vflux) + ip1(jm1(ff_v*vflux))
+                                   + ff_v*vflux  +     ip1(ff_v*vflux))
 
     elif fscheme == 'ene':
-        uPVO = (1/4.0)*(ff_u/e1u)*( jm1(vflux) + ip1(jm1(vflux)) 
-                                +       vflux +      ip1(vflux)  ) 
+        uPVO = (1/4.0)*(1/e1u)*( jm1(ff_v*vflux) + ip1(jm1(ff_v*vflux)) 
+                                +       ff_v*vflux +      ip1(ff_v*vflux)  ) 
 
     else: 
         print(f">> unknown Coriolis scheme >> {fscheme} ")
@@ -1160,24 +1199,20 @@ def PVO_prccalc(u_cube, v_cube, ff_f, e1u, e1v, e2u, e2v, e1f, e2f, e3u, e3v, e3
 
     uPVO = np.ma.masked_array(uPVO.data, mask=u_cube.data.mask)
 
-    #Calculate the Coriolis parameter centred on v points
-    ff_v = (im1(ff_f)*(e1v-0.5*im1(e1f)) + 0.5*im1(e1f)*ff_f )/e1v
-    ff_v[...,:,0] = ff_f[...,:,0]
-
     #Calculate the y component of PVO
     if fscheme == 'een_0' or fscheme =='een_1':
-        vPVO = -(1/12.0)*(ff_v/e2v)*(  jp1(e3_sw) * im1(jp1(uflux))
-                                + jp1(e3_se) * jp1(uflux)
-                                    + e3_nw  * im1(uflux)
-                                    + e3_ne  * uflux )
+        vPVO = -(1/12.0)*(1/e2v)*(  jp1(e3_sw) * im1(jp1(ff_u*uflux))
+                                + jp1(e3_se) * jp1(ff_u*uflux)
+                                    + e3_nw  * im1(ff_u*uflux)
+                                    + e3_ne  * ff_u*uflux )
 
     elif fscheme == 'ens':
-        vPVO = -(1/4.0)*(ff_v/e2v)*(   im1(uflux) + im1(jp1(uflux)) 
-                                    +   uflux  +     jp1(uflux))
+        vPVO = -(1/4.0)*(1/e2v)*(   im1(ff_u*uflux) + im1(jp1(ff_u*uflux)) 
+                                    +   ff_u*uflux  +     jp1(ff_u*uflux))
     
     elif fscheme == 'ene':
-        vPVO = -(1/4.0)*(ff_v/e2v)*( ( im1(uflux) + im1(jp1(uflux)) )
-                                    +(     uflux +      jp1(uflux)) )
+        vPVO = -(1/4.0)*(1/e2v)*( ( im1(ff_u*uflux) + im1(jp1(ff_u*uflux)) )
+                                    +(     ff_u*uflux +      jp1(ff_u*uflux)) )
 
     else: 
         print(f">> unknown Coriolis scheme >> {fscheme} ")
