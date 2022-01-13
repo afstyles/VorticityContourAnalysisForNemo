@@ -350,6 +350,13 @@ def VortDiagnostic2D(u_cube, v_cube,
     curl_fdu_cube.units         = 'm/s2'
     curl_fdu_cube.add_aux_coord(lat, [-2,-1])
     curl_fdu_cube.add_aux_coord(lon, [-2,-1])
+
+    curl_mfdu_cube = Cube(np.abs(curl_fdu), dim_coords_and_dims=[(time_coord,0)])
+    curl_mfdu_cube.long_name     = 'Calculation of |f divh(U)|'
+    curl_mfdu_cube.var_name      = 'curl_mfdu_zint'
+    curl_mfdu_cube.units         = 'm/s2'
+    curl_mfdu_cube.add_aux_coord(lat, [-2,-1])
+    curl_mfdu_cube.add_aux_coord(lon, [-2,-1])
     
     curl_div_cube = Cube(curl_div, dim_coords_and_dims=[(time_coord,0)])
     curl_div_cube.long_name     = 'Calculation of divh(fU)'
@@ -408,6 +415,7 @@ def VortDiagnostic2D(u_cube, v_cube,
                     'RES' :curl_res_cube,
                     'PVO2':curl_pvo2_cube,
                     'FDU' :curl_fdu_cube,
+                    'MFDU' :curl_fdu_cube,
                     'DIV' :curl_div_cube,
                     'MLV' :curl_mlv_cube,
                     'BET' :curl_bet_cube,
