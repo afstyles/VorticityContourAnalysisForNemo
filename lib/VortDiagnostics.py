@@ -351,8 +351,8 @@ def VortDiagnostic2D(u_cube, v_cube,
     curl_fdu_cube.add_aux_coord(lat, [-2,-1])
     curl_fdu_cube.add_aux_coord(lon, [-2,-1])
 
-    curl_mfdu_cube = Cube(np.abs(curl_fdu), dim_coords_and_dims=[(time_coord,0)])
-    curl_mfdu_cube.long_name     = 'Calculation of |f divh(U)|'
+    curl_mfdu_cube = Cube(np.max(np.abs(ff_f))*np.abs(curl_fdu/ff_f), dim_coords_and_dims=[(time_coord,0)])
+    curl_mfdu_cube.long_name     = 'Calculation of |f0 divh(U)|'
     curl_mfdu_cube.var_name      = 'curl_mfdu_zint'
     curl_mfdu_cube.units         = 'm/s2'
     curl_mfdu_cube.add_aux_coord(lat, [-2,-1])
