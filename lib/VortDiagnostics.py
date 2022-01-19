@@ -103,7 +103,7 @@ def VortDiagnostic2D(u_cube, v_cube,
     vice_cube - IRIS cube containing accelerations associated with sea ice surface stresses in the v direction (t,y,x) [m/s2]
 
     OUTPUT variables
-    Returns a dictionary of IRIS cubes that are the associated vorticity diagnostics
+    Returns a dictionary of IRIS cubes that are the associated vorticity diagnostics and the vorticity field of the depth-integrated flow
 
     Dictionary key | Description
     ---------------|-------------------------------------------------------------------------------
@@ -123,6 +123,7 @@ def VortDiagnostic2D(u_cube, v_cube,
     BET            - Component of curl(PVO) due to changes in the Coriolis parameter (t,y,x) [m/s2]
     PRC            - Component of curl(PVO) due to changes in partial cell thickness (t,y,x) [m/s2]
 
+    VORTICITY      - Curl of the depth-integrated flow                               (t,y,x) [m/s]
     """
 
     #Load Coriolis parameter centred on u and v points
@@ -214,6 +215,8 @@ def VortDiagnostic2D(u_cube, v_cube,
     curl_pvo2 =     CGO.kcurl_orca(upvo2_zint, vpvo2_zint, e1u, e2v, e1f, e2f )
     curl_prc =      CGO.kcurl_orca(uprc_zint, vprc_zint, e1u, e2v, e1f, e2f )
     curl_nul =      CGO.kcurl_orca(unul_zint, vnul_zint, e1u, e2v, e1f, e2f )
+
+    curl_vorticity  = CGO.kcurl_orca(u_zint, v_zint, e1u, e2v, e1f, e2f )  #Also calculate the vorticity field
     
     if icelog == True:
         curl_ice = CGO.kcurl_orca(uice_zint, vice_zint, e1u, e2v, e1f, e2f)
@@ -398,7 +401,13 @@ def VortDiagnostic2D(u_cube, v_cube,
         curl_ice_cube.add_aux_coord(lon, [-2,-1])
         curl_ice_cube.attributes = uice_cube.attributes
 
-
+    curl_vorticity_cube = Cube(curl_vorticity, dim_coords_and_dims=[(time_coord,0)])
+    curl_vorticity_cube.long_name     = 'Curl of the depth-integrated velocity field'
+    curl_vorticity_cube.var_name      = 'curl_vorticity_zint'
+    curl_vorticity_cube.units         = 'm/s'
+    curl_vorticity_cube.add_aux_coord(lat, [-2,-1])
+    curl_vorticity_cube.add_aux_coord(lon, [-2,-1])
+    curl_vorticity_cube.attributes = uprc_cube.attributes
 
     #Save outputs in a dictionary for easy extraction >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
     output_dict = { 'KEG' :curl_keg_cube,
@@ -419,7 +428,8 @@ def VortDiagnostic2D(u_cube, v_cube,
                     'DIV' :curl_div_cube,
                     'MLV' :curl_mlv_cube,
                     'BET' :curl_bet_cube,
-                    'PRC' :curl_prc_cube }
+                    'PRC' :curl_prc_cube,
+                    'VORTICITY' : curl_vorticity_cube }
 
     if icelog == True:
         output_dict['ICE'] = curl_ice_cube
