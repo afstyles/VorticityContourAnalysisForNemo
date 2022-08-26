@@ -24,8 +24,14 @@ import iris
 from iris.cube import Cube
 from iris.coords import AuxCoord
 import numpy as np
+from pyrsistent import v
 import CGridOperations as CGO
 from CGridOperations import im1, ip1, jm1, jp1, roll_and_mask
+
+import sys
+import os
+sys.path.append(os.path.abspath("../lib"))
+from cube_prep import CubeListExtract as CLE
 
 #  _   _            _  ______ _                             _   _      _____ ______ 
 # | | | |          | | |  _  (_)                           | | (_)    / __  \|  _  \
@@ -36,10 +42,7 @@ from CGridOperations import im1, ip1, jm1, jp1, roll_and_mask
 #                                      __/ |                                        
 #                                     |___/                                    
      
-def VortDiagnostic2D(u_cube, v_cube, 
-                    ukeg_cube, urvo_cube, upvo_cube, uhpg_cube, uldf_cube, uzdf_cube, uzad_cube, utot_cube, ubet_cube, uprc_cube, upvo2_cube, unul_cube, u_tau_cube,
-                    vkeg_cube, vrvo_cube, vpvo_cube, vhpg_cube, vldf_cube, vzdf_cube, vzad_cube, vtot_cube, vbet_cube, vprc_cube, vpvo2_cube, vnul_cube, v_tau_cube,
-                    ff_f, e3u, e3v, e3t, e1u , e2u, e1v, e2v, e1f, e2f, tmask, icelog=False, uice_cube=None, vice_cube=None):
+def VortDiagnostic2D( data_list, grid_list, VarDict, MaskDict, PVO_mdecomp_dict, icelog=False, uice_cube=None, vice_cube=None):
     """
     VortDiagnostic2D(u_cube, v_cube, 
                     ukeg_cube, urvo_cube, upvo_cube, uhpg_cube, uldf_cube, uzdf_cube, uzad_cube, utot_cube, ubet_cube, unvs_cube, upvo2_cube, unul_cube,
@@ -126,315 +129,161 @@ def VortDiagnostic2D(u_cube, v_cube,
     VORTICITY      - Curl of the depth-integrated flow                               (t,y,x) [m/s]
     """
 
-    #Load Coriolis parameter centred on u and v points
-    ff_u = uprc_cube.coord("ff_u").points
-    ff_v = vprc_cube.coord("ff_v").points
+
+    ff_f = iris.util.squeeze(CLE(grid_list, VarDict['ff_f'])).data
+    e1u = iris.util.squeeze(CLE(grid_list, VarDict['e1u'])).data
+    e2u = iris.util.squeeze(CLE(grid_list, VarDict['e2u'])).data
+    e1v = iris.util.squeeze(CLE(grid_list, VarDict['e1v'])).data
+    e2v = iris.util.squeeze(CLE(grid_list, VarDict['e2v'])).data
+    e1f = iris.util.squeeze(CLE(grid_list, VarDict['e1f'])).data
+    e2f = iris.util.squeeze(CLE(grid_list, VarDict['e2f'])).data
+    e3u = iris.util.squeeze(CLE(grid_list, VarDict['e3u'])).data
+    e3v = iris.util.squeeze(CLE(grid_list, VarDict['e3v'])).data
+    e3t = iris.util.squeeze(CLE(grid_list, VarDict['e3t'])).data
+    umask = MaskDict['umask']
+    vmask = MaskDict['vmask']
+    tmaskutil = MaskDict['tmaskutil']
+    umaskutil = MaskDict['umaskutil']
+    vmaskutil = MaskDict['vmaskutil']
+
+    u_cube = CLE(data_list, VarDict['u'])
+    v_cube = CLE(data_list, VarDict['v'])
+
+
+    #Calculate the Coriolis parameter centred on u points
+    ff_u = (jm1(ff_f)*(e2u-0.5*jm1(e2f)) + 0.5*jm1(e2f)*ff_f )/e2u
+    ff_u[...,0,:] = ff_f[...,0,:]
+
+    #Calculate the Coriolis parameter centred on v points
+    ff_v = (im1(ff_f)*(e1v-0.5*im1(e1f)) + 0.5*im1(e1f)*ff_f )/e1v
+    ff_v[...,:,0] = ff_f[...,:,0]
     
     #Depth integrate the momentum trends and velocities
-    u_zint     = np.sum(u_cube.data     * e3u, axis = -3)
-    ukeg_zint  = np.sum(ukeg_cube.data  * e3u, axis = -3)
-    urvo_zint  = np.sum(urvo_cube.data  * e3u, axis = -3)
-    upvo_zint  = np.sum(upvo_cube.data  * e3u, axis = -3)
-    uhpg_zint  = np.sum(uhpg_cube.data  * e3u, axis = -3)
-    uldf_zint  = np.sum(uldf_cube.data  * e3u, axis = -3)
-    uzdf_zint  = np.sum(uzdf_cube.data  * e3u, axis = -3)
-    uzad_zint  = np.sum(uzad_cube.data  * e3u, axis = -3)
-    utot_zint  = np.sum(utot_cube.data  * e3u, axis = -3)
-    ubet_zint  = np.sum(ubet_cube.data  * e3u, axis = -3)
-    uprc_zint  = np.sum(uprc_cube.data  * e3u, axis = -3)
-    upvo2_zint = np.sum(upvo2_cube.data * e3u, axis = -3)
-    unul_zint  = np.sum(unul_cube.data  * e3u, axis = -3)
-    # uwnd_zint  = u_tau_cube.data
+    momlist = ['_keg', '_rvo', '_pvo', '_hpg', '_ldf', '_zdf', '_zad', '_tot' ]
+    curl_dict = {}
+    for label in momlist:
+        umom_cube = CLE(data_list, VarDict['u' + label])
+        vmom_cube = CLE(data_list, VarDict['v' + label])
+        curl_dict[label] = Mom2Vort(umom_cube, vmom_cube, e3u, e3v, umask, vmask, e1u, e2v, e1f, e2f)
 
+    PVO_momlist = ['_bet', '_prc', '_nul', '_pvo2']
+    for label in PVO_momlist:
+        umom_cube = PVO_mdecomp_dict['u' + label]
+        vmom_cube = PVO_mdecomp_dict['v' + label]
+        curl_dict[label] = Mom2Vort(umom_cube, vmom_cube, e3u, e3v, umask, vmask, e1u, e2v, e1f, e2f)
 
-    v_zint     = np.sum(v_cube.data     * e3v, axis = -3)
-    vkeg_zint  = np.sum(vkeg_cube.data  * e3v, axis = -3)
-    vrvo_zint  = np.sum(vrvo_cube.data  * e3v, axis = -3)
-    vpvo_zint  = np.sum(vpvo_cube.data  * e3v, axis = -3)
-    vhpg_zint  = np.sum(vhpg_cube.data  * e3v, axis = -3)
-    vldf_zint  = np.sum(vldf_cube.data  * e3v, axis = -3)
-    vzdf_zint  = np.sum(vzdf_cube.data  * e3v, axis = -3)
-    vzad_zint  = np.sum(vzad_cube.data  * e3v, axis = -3)
-    vtot_zint  = np.sum(vtot_cube.data  * e3v, axis = -3)
-    vbet_zint  = np.sum(vbet_cube.data  * e3v, axis = -3)
-    vprc_zint  = np.sum(vprc_cube.data  * e3v, axis = -3)
-    vpvo2_zint = np.sum(vpvo2_cube.data * e3v, axis = -3)
-    vnul_zint  = np.sum(vnul_cube.data  * e3v, axis = -3)
-    # vwnd_zint = v_tau_cube.data
-    
-    # h_u = np.sum(np.ma.masked_array(e3u,mask=uzdf_cube.data.mask[0,...]), axis=-3)
-    # h_v = np.sum(np.ma.masked_array(e3v,mask=vzdf_cube.data.mask[0,...]), axis=-3)
-
-#     uwnd_zint = u_tau_cube.data*e3u[0,...]
-#     vwnd_zint = v_tau_cube.data*e3v[0,...]
-
+    #Also calculate the relative vorticity
+    curl_dict['_vorticity'] = Mom2Vort(u_cube, v_cube, e3u, e3v, umask, vmask, e1u, e2v, e1f, e2f)
     
     if icelog == True:
-        uice_zint = uice_cube.data 
-        vice_zint = vice_cube.data
+        uice_zint = CLE(data_list, VarDict['u_ice']).data * umaskutil
+        vice_zint = CLE(data_list, VarDict['v_ice']).data * vmaskutil
         
-        uwnd_zint = u_tau_cube.data
-        vwnd_zint = v_tau_cube.data
+        uwnd_zint = CLE(data_list, VarDict['u_tau']).data * umaskutil
+        vwnd_zint = CLE(data_list, VarDict['v_tau']).data * vmaskutil
+
+        curl_dict['_ice'] = CGO.kcurl_orca(uice_zint, vice_zint, e1u, e2v, e1f, e2f)
+        curl_dict['_wnd'] = CGO.kcurl_orca(uwnd_zint, vwnd_zint, e1u, e2v, e1f, e2f)
+        curl_dict['_frc'] = curl_dict['_zdf'] - curl_dict['_wnd'] - curl_dict['_ice']
         
     else:
-        uwnd_zint = u_tau_cube.data*e3u[0,...]
-        vwnd_zint = v_tau_cube.data*e3v[0,...]
+        uwnd_zint = CLE(data_list, VarDict['u_tau'] ).data*(e3u[0,...])/2
+        vwnd_zint = CLE(data_list, VarDict['v_tau'] ).data*(e3v[0,...])/2
 
-    # Approximately separate zdf into wind and friction by integrating over partial depth >>>
-    # depthu = np.cumsum(e3u, axis=0) - np.broadcast_to(0.5*e3u[0,...], e3u.shape)
-    # depthv = np.cumsum(e3v, axis=0) - np.broadcast_to(0.5*e3v[0,...], e3v.shape)
-    
-    # depthu = np.broadcast_to(depthu, uzdf_cube.shape)
-    # depthv = np.broadcast_to(depthv, vzdf_cube.shape)
+        curl_dict['_wnd'] = CGO.kcurl_orca(uwnd_zint, vwnd_zint, e1u, e2v, e1f, e2f)
+        curl_dict['_frc'] = curl_dict['_zdf'] - curl_dict['_wnd']
 
-    # uwnd_mask = (depthu > 100)
-    # vwnd_mask = (depthv > 100)
-    
-    # uwnd = uzdf_cube.data
-    # mask = np.ma.mask_or(uwnd.mask, uwnd_mask)
-    # uwnd = np.ma.masked_array(uwnd, mask=mask)
-    
-    # vwnd = vzdf_cube.data
-    # mask = np.ma.mask_or(vwnd.mask, vwnd_mask)
-    # vwnd = np.ma.masked_array(vwnd, mask=mask)
-    
-    # uwnd_zint = np.sum(uwnd*e3u, axis = -3)
-    # vwnd_zint = np.sum(vwnd*e3v, axis = -3)
-    
-    #>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-    curl_keg =      CGO.kcurl_orca(ukeg_zint, vkeg_zint, e1u, e2v, e1f, e2f)
-    curl_rvo =      CGO.kcurl_orca(urvo_zint, vrvo_zint, e1u, e2v, e1f, e2f)
-    curl_pvo =      CGO.kcurl_orca(upvo_zint, vpvo_zint, e1u, e2v, e1f, e2f)
-    curl_hpg =      CGO.kcurl_orca(uhpg_zint, vhpg_zint, e1u, e2v, e1f, e2f)
-    curl_ldf =      CGO.kcurl_orca(uldf_zint, vldf_zint, e1u, e2v, e1f, e2f)
-    curl_zdf =      CGO.kcurl_orca(uzdf_zint, vzdf_zint, e1u, e2v, e1f, e2f)
-    curl_zad =      CGO.kcurl_orca(uzad_zint, vzad_zint, e1u, e2v, e1f, e2f)
-    curl_tot =      CGO.kcurl_orca(utot_zint, vtot_zint, e1u, e2v, e1f, e2f)
-    curl_wnd =      CGO.kcurl_orca(uwnd_zint, vwnd_zint, e1u, e2v, e1f, e2f)
-    curl_bet =      CGO.kcurl_orca(ubet_zint, vbet_zint, e1u, e2v, e1f, e2f )
-    curl_pvo2 =     CGO.kcurl_orca(upvo2_zint, vpvo2_zint, e1u, e2v, e1f, e2f )
-    curl_prc =      CGO.kcurl_orca(uprc_zint, vprc_zint, e1u, e2v, e1f, e2f )
-    curl_nul =      CGO.kcurl_orca(unul_zint, vnul_zint, e1u, e2v, e1f, e2f )
-
-    curl_vorticity  = CGO.kcurl_orca(u_zint, v_zint, e1u, e2v, e1f, e2f )  #Also calculate the vorticity field
-    
-    if icelog == True:
-        curl_ice = CGO.kcurl_orca(uice_zint, vice_zint, e1u, e2v, e1f, e2f)
-
-    #Divide the momentum diagnostics by the u/v point value of f so no beta effects emerge from the curl calculation
-    #Then multiply by the value of f at the f point afterwards
-    # curl_prc = ff_f*CGO.kcurl_orca(uprc_zint/ff_u, vprc_zint/ff_v, e1u, e2v, e1f, e2f )
-    # curl_nul = ff_f*CGO.kcurl_orca(unul_zint/ff_u, vnul_zint/ff_v, e1u, e2v, e1f, e2f )
-    
-    #Calculate the friction contribution from remainder of ZDF
-    if icelog == False:
-        curl_frc = curl_zdf - curl_wnd
-    else:
-        curl_frc = curl_zdf - curl_wnd - curl_ice
     
     #Calculate total advective contribution
-    curl_adv = curl_keg + curl_rvo + curl_zad
+    curl_dict['_adv'] = curl_dict['_keg'] + curl_dict['_rvo'] + curl_dict['_zad']
 
     #Calculate residual of vorticity budget:
     # Budget :  TOT = KEG + RVO + PVO + HPG + LDF + ZDF + ZAD
     # Residual: RES = KEG + RVO + PVO + HPG + LDF + ZDF + ZAD - TOT
 
-    curl_res = ( curl_keg + curl_rvo + curl_pvo + curl_hpg 
-                + curl_ldf + curl_zdf + curl_zad - curl_tot )
-        
+    curl_dict['_res'] = ( curl_dict['_adv'] + curl_dict['_pvo'] + curl_dict['_hpg'] 
+                + curl_dict['_ldf'] + curl_dict['_zdf'] - curl_dict['_tot'] )
+
+    #Determine the fmask
+    fmask = np.ma.make_mask(tmaskutil * jp1(tmaskutil) * ip1(tmaskutil) * ip1(jp1(tmaskutil)))
+    fmask[...,: ,-1]   = False
+    fmask[...,-1,: ]   = False
+
     #Decompose PVO into 5 meaningful parts
-    curl_fdu = PVO_divcalc(u_cube, v_cube, ff_f, e1u, e1v, e2u, e2v, e1f, e2f, e3u, e3v, curl_pvo.mask , f_inside=False)  #f divh(U) effect of divergences 
-    curl_div = PVO_divcalc(u_cube, v_cube, ff_f, e1u, e1v, e2u, e2v, e1f, e2f, e3u, e3v, curl_pvo.mask , f_inside=True )  # divh(fU) analytic form
-    curl_mlv = curl_nul - curl_div  #Changes in model level
-    curl_bet = curl_bet - curl_nul  #F displacement term
-    curl_prc = curl_prc - curl_nul  #Partial cells
+    curl_dict['_fdu'] = PVO_divcalc(u_cube, v_cube, ff_f, e1u, e1v, e2u, e2v, e1f, e2f, e3u, e3v, umask, vmask, fmask, f_inside=False)  #f divh(U) effect of divergences 
+    curl_dict['_div'] = PVO_divcalc(u_cube, v_cube, ff_f, e1u, e1v, e2u, e2v, e1f, e2f, e3u, e3v, umask, vmask, fmask, f_inside=True )  # divh(fU) analytic form
+    curl_dict['_mlv'] = curl_dict['_nul'] - curl_dict['_div']  #Changes in model level
+    curl_dict['_bet'] = curl_dict['_bet'] - curl_dict['_nul']  #F displacement term
+    curl_dict['_prc'] = curl_dict['_prc'] - curl_dict['_nul']  #Partial cells
+
+    #Also calculate f0 divh(U) for error estimation when contour integrating
+    curl_dict['_mfdu'] = np.max(np.abs(ff_f))*np.abs(curl_dict['_fdu']/ff_f)
 
     #Save outputs as IRIS cubes >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-    time_coord  = ukeg_cube.coord('time')
+    time_coord  = u_cube.coord('time')
     
-    lat = ukeg_cube.coord('latitude')
-    lon = ukeg_cube.coord('longitude')
+    lat = u_cube.coord('latitude')
+    lon = u_cube.coord('longitude')
 
-    curl_keg_cube = Cube(curl_keg, dim_coords_and_dims=[(time_coord,0)])
-    curl_keg_cube.long_name     = 'k-curl of depth-integrated kinetic energy gradient trend'
-    curl_keg_cube.var_name      = 'curl_keg_zint'
-    curl_keg_cube.units         = 'm/s2'
-    curl_keg_cube.add_aux_coord(lat, [-2,-1])
-    curl_keg_cube.add_aux_coord(lon, [-2,-1])
+    #Store vorticity diagnostic arrays as IRIS cubes
+    output_dict = {}
 
-    curl_rvo_cube = Cube(curl_rvo, dim_coords_and_dims=[(time_coord,0)])
-    curl_rvo_cube.long_name     = 'k-curl of depth-integrated relative vorticity trend'
-    curl_rvo_cube.var_name      = 'curl_rvo_zint'
-    curl_rvo_cube.units         = 'm/s2'
-    curl_rvo_cube.add_aux_coord(lat, [-2,-1])
-    curl_rvo_cube.add_aux_coord(lon, [-2,-1])
+    for label in curl_dict:
+        array = curl_dict[label]
+        if np.ma.is_masked(array): array = array.data
+        array = np.ma.masked_array( array, mask=np.broadcast_to(~fmask, array.shape)  )
+        output_dict[label] = Cube(array, dim_coords_and_dims=[(time_coord,0)])    
+        output_dict[label].var_name      = 'curl' + label + '_zint'
+        output_dict[label].units         = 'm/s2'
+        output_dict[label].add_aux_coord(lat, [-2,-1])
+        output_dict[label].add_aux_coord(lon, [-2,-1])
 
-    curl_pvo_cube = Cube(curl_pvo, dim_coords_and_dims=[(time_coord,0)])
-    curl_pvo_cube.long_name     = 'k-curl of depth-integrated planetary vorticity trend'
-    curl_pvo_cube.var_name      = 'curl_pvo_zint'
-    curl_pvo_cube.units         = 'm/s2'
-    curl_pvo_cube.add_aux_coord(lat, [-2,-1])
-    curl_pvo_cube.add_aux_coord(lon, [-2,-1])
-    
-    curl_hpg_cube = Cube(curl_hpg, dim_coords_and_dims=[(time_coord,0)])
-    curl_hpg_cube.long_name     = 'k-curl of depth-integrated horizontal pressure gradient trend'
-    curl_hpg_cube.var_name      = 'curl_hpg_zint'
-    curl_hpg_cube.units         = 'm/s2'
-    curl_hpg_cube.add_aux_coord(lat, [-2,-1])
-    curl_hpg_cube.add_aux_coord(lon, [-2,-1])
+    #Correct units for the relative vorticity Cube
+    output_dict['_vorticity'].units = 'm/s'
 
-    curl_ldf_cube = Cube(curl_ldf, dim_coords_and_dims=[(time_coord,0)])
-    curl_ldf_cube.long_name     = 'k-curl of depth-integrated lateral diffusion trend'
-    curl_ldf_cube.var_name      = 'curl_ldf_zint'
-    curl_ldf_cube.units         = 'm/s2'
-    curl_ldf_cube.add_aux_coord(lat, [-2,-1])
-    curl_ldf_cube.add_aux_coord(lon, [-2,-1])
-
-    curl_zdf_cube = Cube(curl_zdf, dim_coords_and_dims=[(time_coord,0)])
-    curl_zdf_cube.long_name     = 'k-curl of depth-integrated vertical diffusion trend'
-    curl_zdf_cube.var_name      = 'curl_zdf_zint'
-    curl_zdf_cube.units         = 'm/s2'
-    curl_zdf_cube.add_aux_coord(lat, [-2,-1])
-    curl_zdf_cube.add_aux_coord(lon, [-2,-1])
-
-    curl_zad_cube = Cube(curl_zad, dim_coords_and_dims=[(time_coord,0)])
-    curl_zad_cube.long_name     = 'k-curl of depth-integrated vertical advection trend'
-    curl_zad_cube.var_name      = 'curl_zad_zint'
-    curl_zad_cube.units         = 'm/s2'
-    curl_zad_cube.add_aux_coord(lat, [-2,-1])
-    curl_zad_cube.add_aux_coord(lon, [-2,-1])
-
-    curl_tot_cube = Cube(curl_tot, dim_coords_and_dims=[(time_coord,0)])
-    curl_tot_cube.long_name     = 'k-curl of depth-integrated total before time stepping trend'
-    curl_tot_cube.var_name      = 'curl_tot_zint'
-    curl_tot_cube.units         = 'm/s2'
-    curl_tot_cube.add_aux_coord(lat, [-2,-1])
-    curl_tot_cube.add_aux_coord(lon, [-2,-1])
-    
-    curl_wnd_cube = Cube(curl_wnd, dim_coords_and_dims=[(time_coord,0)])
-    curl_wnd_cube.long_name     = 'k-curl of depth-integrated wind stress (partial ZDF) trend'
-    curl_wnd_cube.var_name      = 'curl_wnd_zint'
-    curl_wnd_cube.units         = 'm/s2'
-    curl_wnd_cube.add_aux_coord(lat, [-2,-1])
-    curl_wnd_cube.add_aux_coord(lon, [-2,-1])
-    
-    curl_frc_cube = Cube(curl_frc, dim_coords_and_dims=[(time_coord,0)])
-    curl_frc_cube.long_name     = 'k-curl of depth-integrated lateral friction (partial ZDF) trend'
-    curl_frc_cube.var_name      = 'curl_frc_zint'
-    curl_frc_cube.units         = 'm/s2'
-    curl_frc_cube.add_aux_coord(lat, [-2,-1])
-    curl_frc_cube.add_aux_coord(lon, [-2,-1])
-
-    curl_adv_cube = Cube(curl_adv, dim_coords_and_dims=[(time_coord,0)])
-    curl_adv_cube.long_name     = 'k-curl of depth-integrated total advection trend'
-    curl_adv_cube.var_name      = 'curl_adv_zint'
-    curl_adv_cube.units         = 'm/s2'
-    curl_adv_cube.add_aux_coord(lat, [-2,-1])
-    curl_adv_cube.add_aux_coord(lon, [-2,-1])
-
-    curl_res_cube = Cube(curl_res, dim_coords_and_dims=[(time_coord,0)])
-    curl_res_cube.long_name     = 'k-curl of depth-integrated residual trend'
-    curl_res_cube.var_name      = 'curl_res_zint'
-    curl_res_cube.units         = 'm/s2'
-    curl_res_cube.add_aux_coord(lat, [-2,-1])
-    curl_res_cube.add_aux_coord(lon, [-2,-1])
-    
-    curl_pvo2_cube = Cube(curl_pvo2, dim_coords_and_dims=[(time_coord,0)])
-    curl_pvo2_cube.long_name     = 'Recreation of PVO'
-    curl_pvo2_cube.var_name      = 'curl_pvo2_zint'
-    curl_pvo2_cube.units         = 'm/s2'
-    curl_pvo2_cube.add_aux_coord(lat, [-2,-1])
-    curl_pvo2_cube.add_aux_coord(lon, [-2,-1])
-    curl_pvo2_cube.attributes = upvo2_cube.attributes
-    
-    curl_fdu_cube = Cube(curl_fdu, dim_coords_and_dims=[(time_coord,0)])
-    curl_fdu_cube.long_name     = 'Calculation of f divh(U)'
-    curl_fdu_cube.var_name      = 'curl_fdu_zint'
-    curl_fdu_cube.units         = 'm/s2'
-    curl_fdu_cube.add_aux_coord(lat, [-2,-1])
-    curl_fdu_cube.add_aux_coord(lon, [-2,-1])
-
-    curl_mfdu_cube = Cube(np.max(np.abs(ff_f))*np.abs(curl_fdu/ff_f), dim_coords_and_dims=[(time_coord,0)])
-    curl_mfdu_cube.long_name     = 'Calculation of |f0 divh(U)|'
-    curl_mfdu_cube.var_name      = 'curl_mfdu_zint'
-    curl_mfdu_cube.units         = 'm/s2'
-    curl_mfdu_cube.add_aux_coord(lat, [-2,-1])
-    curl_mfdu_cube.add_aux_coord(lon, [-2,-1])
-    
-    curl_div_cube = Cube(curl_div, dim_coords_and_dims=[(time_coord,0)])
-    curl_div_cube.long_name     = 'Calculation of divh(fU)'
-    curl_div_cube.var_name      = 'curl_div_zint'
-    curl_div_cube.units         = 'm/s2'
-    curl_div_cube.add_aux_coord(lat, [-2,-1])
-    curl_div_cube.add_aux_coord(lon, [-2,-1])
-
-    curl_mlv_cube = Cube(curl_mlv, dim_coords_and_dims=[(time_coord,0)])
-    curl_mlv_cube.long_name     = 'PVO contribution due to changes in lowest model level'
-    curl_mlv_cube.var_name      = 'curl_mlv_zint'
-    curl_mlv_cube.units         = 'm/s2'
-    curl_mlv_cube.add_aux_coord(lat, [-2,-1])
-    curl_mlv_cube.add_aux_coord(lon, [-2,-1])
-    curl_mlv_cube.attributes = unul_cube.attributes
-    
-    curl_bet_cube = Cube(curl_bet, dim_coords_and_dims=[(time_coord,0)])
-    curl_bet_cube.long_name     = 'PVO contribution due to f displacement term'
-    curl_bet_cube.var_name      = 'curl_bet_zint'
-    curl_bet_cube.units         = 'm/s2'
-    curl_bet_cube.add_aux_coord(lat, [-2,-1])
-    curl_bet_cube.add_aux_coord(lon, [-2,-1])
-    curl_bet_cube.attributes = ubet_cube.attributes
-    
-    curl_prc_cube = Cube(curl_prc, dim_coords_and_dims=[(time_coord,0)])
-    curl_prc_cube.long_name     = 'PVO contribution due to varying cell thickness'
-    curl_prc_cube.var_name      = 'curl_prc_zint'
-    curl_prc_cube.units         = 'm/s2'
-    curl_prc_cube.add_aux_coord(lat, [-2,-1])
-    curl_prc_cube.add_aux_coord(lon, [-2,-1])
-    curl_prc_cube.attributes = uprc_cube.attributes
-    
-    if icelog == True:
-        curl_ice_cube = Cube(curl_ice, dim_coords_and_dims=[(time_coord,0)])
-        curl_ice_cube.long_name     = 'k-curl of sea ice surface stress trend'
-        curl_ice_cube.var_name      = 'curl_ice_zint'
-        curl_ice_cube.units         = 'm/s2'
-        curl_ice_cube.add_aux_coord(lat, [-2,-1])
-        curl_ice_cube.add_aux_coord(lon, [-2,-1])
-        curl_ice_cube.attributes = uice_cube.attributes
-
-    curl_vorticity_cube = Cube(curl_vorticity, dim_coords_and_dims=[(time_coord,0)])
-    curl_vorticity_cube.long_name     = 'Curl of the depth-integrated velocity field'
-    curl_vorticity_cube.var_name      = 'curl_vorticity_zint'
-    curl_vorticity_cube.units         = 'm/s'
-    curl_vorticity_cube.add_aux_coord(lat, [-2,-1])
-    curl_vorticity_cube.add_aux_coord(lon, [-2,-1])
-    curl_vorticity_cube.attributes = uprc_cube.attributes
-
-    #Save outputs in a dictionary for easy extraction >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-    output_dict = { 'KEG' :curl_keg_cube,
-                    'RVO' :curl_rvo_cube,
-                    'PVO' :curl_pvo_cube,
-                    'HPG' :curl_hpg_cube,
-                    'LDF' :curl_ldf_cube,
-                    'ZDF' :curl_zdf_cube,
-                    'ZAD' :curl_zad_cube,
-                    'TOT' :curl_tot_cube,
-                    'WND' :curl_wnd_cube,
-                    'FRC' :curl_frc_cube,
-                    'ADV' :curl_adv_cube,
-                    'RES' :curl_res_cube,
-                    'PVO2':curl_pvo2_cube,
-                    'FDU' :curl_fdu_cube,
-                    'MFDU' :curl_fdu_cube,
-                    'DIV' :curl_div_cube,
-                    'MLV' :curl_mlv_cube,
-                    'BET' :curl_bet_cube,
-                    'PRC' :curl_prc_cube,
-                    'VORTICITY' : curl_vorticity_cube }
+    #Give IRIS cubes long_names that are more readable
+    output_dict['_keg'].long_name = 'k-curl of depth-integrated kinetic energy gradient trend'
+    output_dict['_rvo'].long_name = 'k-curl of depth-integrated relative vorticity trend'
+    output_dict['_pvo'].long_name = 'k-curl of depth-integrated planetary vorticity trend'
+    output_dict['_hpg'].long_name = 'k-curl of depth-integrated horizontal pressure gradient trend'
+    output_dict['_ldf'].long_name = 'k-curl of depth-integrated lateral diffusion trend'
+    output_dict['_zdf'].long_name = 'k-curl of depth-integrated vertical diffusion trend'
+    output_dict['_zad'].long_name = 'k-curl of depth-integrated vertical advection trend'
+    output_dict['_tot'].long_name = 'k-curl of depth-integrated total before time stepping trend'
+    output_dict['_wnd'].long_name = 'k-curl of depth-integrated wind stress (partial ZDF) trend'
+    output_dict['_frc'].long_name = 'k-curl of depth-integrated lateral friction (partial ZDF) trend'
+    output_dict['_adv'].long_name = 'k-curl of depth-integrated total advection trend'
+    output_dict['_res'].long_name = 'k-curl of depth-integrated residual trend'
+    output_dict['_pvo2'].long_name = 'Recreation of PVO'
+    output_dict['_fdu'].long_name = 'Calculation of f divh(U)'
+    output_dict['_mfdu'].long_name = 'Calculation of |f0 divh(U)|'
+    output_dict['_div'].long_name = 'Calculation of divh(fU)'
+    output_dict['_mlv'].long_name = 'PVO contribution due to changes in lowest model level'
+    output_dict['_bet'].long_name = 'PVO contribution due to f displacement term'
+    output_dict['_prc'].long_name = 'PVO contribution due to varying cell thickness'
+    output_dict['_vorticity'].long_name = 'Curl of the depth-integrated velocity field'
 
     if icelog == True:
-        output_dict['ICE'] = curl_ice_cube
+        output_dict['_ice'].long_name     = 'k-curl of sea ice surface stress trend'
 
     return output_dict
+
+def Mom2Vort(umom_cube, vmom_cube, e3u, e3v, umask, vmask, e1u, e2v, e1f, e2f):
+    """
+    Calculate a vorticity diagnostic from the two corresponding horizontal momentum diagnostics.
+
+    The momentum diagnostics are depth-integrated and then the curl is taken
+
+    Returns a numpy array
+
+    """
+
+    umom_zint     = np.sum(umom_cube.data * e3u * umask, axis = -3)
+    vmom_zint     = np.sum(vmom_cube.data * e3v * vmask, axis = -3)
+
+    curl_mom  = CGO.kcurl_orca(umom_zint, vmom_zint, e1u, e2v, e1f, e2f )
+
+    return curl_mom
 
 # ______ _   _ _____     _ _                _      
 # | ___ \ | | |  _  |   | (_)              | |     
@@ -445,7 +294,7 @@ def VortDiagnostic2D(u_cube, v_cube,
 #                ______                            
 #               |______|                           
 
-def PVO_divcalc(u_cube, v_cube, ff_f, e1u, e1v, e2u, e2v, e1f, e2f, e3u, e3v, fmask, f_inside=False ):
+def PVO_divcalc(u_cube, v_cube, ff_f, e1u, e1v, e2u, e2v, e1f, e2f, e3u, e3v, umask, vmask, fmask, f_inside=False ):
     """
     PVO_divcalc(u_cube, v_cube, ff_f, e1u, e1v, e2u, e2v, e1f, e2f, e3u, e3v, fmask, f_inside=False )
 
@@ -483,11 +332,8 @@ def PVO_divcalc(u_cube, v_cube, ff_f, e1u, e1v, e2u, e2v, e1f, e2f, e3u, e3v, fm
 
 
     """    
-    uflux = u_cube.data * e2u * e3u
-    vflux = v_cube.data * e1v * e3v
-    
-    uflux[uflux.mask] = 0
-    vflux[vflux.mask] = 0
+    uflux = u_cube.data * e2u * e3u * umask
+    vflux = v_cube.data * e1v * e3v * vmask
     
     uflux_zint = np.sum(uflux, axis=-3)
     vflux_zint = np.sum(vflux, axis=-3)
@@ -520,7 +366,7 @@ def PVO_divcalc(u_cube, v_cube, ff_f, e1u, e1v, e2u, e2v, e1f, e2f, e3u, e3v, fm
     if f_inside == False: PVO_div = - ff_f * divhU
     elif f_inside == True: PVO_div = - divhU
 
-    PVO_div = np.ma.masked_array(PVO_div, mask=fmask)
+    PVO_div = np.ma.masked_array(PVO_div, mask=~np.broadcast_to(fmask, PVO_div.shape))
     
     return PVO_div
 
@@ -533,7 +379,7 @@ def PVO_divcalc(u_cube, v_cube, ff_f, e1u, e1v, e2u, e2v, e1f, e2f, e3u, e3v, fm
 #                ______                              
 #               |______|                             
 
-def PVO_fullcalc(u_cube, v_cube, ff_f, e1u, e1v, e2u, e2v, e1f, e2f, e3u, e3v, e3t, tmask, fscheme='een_0', model='global'):
+def PVO_fullcalc( data_list, grid_list, VarDict, MaskDict, fscheme='een_0', no_pen_masked_log=True):
     """
     PVO_fullcalc(u_cube, v_cube, ff_f, e1u, e1v, e2u, e2v, e1f, e2f, e3u, e3v, e3t, tmask, fscheme='een_0', model='global')
 
@@ -578,22 +424,39 @@ def PVO_fullcalc(u_cube, v_cube, ff_f, e1u, e1v, e2u, e2v, e1f, e2f, e3u, e3v, e
 
     """
 
+    u_cube = CLE(data_list, VarDict['u'])
+    v_cube = CLE(data_list, VarDict['v'])
+
+    ff_f = iris.util.squeeze(CLE(grid_list, VarDict['ff_f'])).data
+    e1u = iris.util.squeeze(CLE(grid_list, VarDict['e1u'])).data
+    e2u = iris.util.squeeze(CLE(grid_list, VarDict['e2u'])).data
+    e1v = iris.util.squeeze(CLE(grid_list, VarDict['e1v'])).data
+    e2v = iris.util.squeeze(CLE(grid_list, VarDict['e2v'])).data
+    e1f = iris.util.squeeze(CLE(grid_list, VarDict['e1f'])).data
+    e2f = iris.util.squeeze(CLE(grid_list, VarDict['e2f'])).data
+    e3u = iris.util.squeeze(CLE(grid_list, VarDict['e3u'])).data
+    e3v = iris.util.squeeze(CLE(grid_list, VarDict['e3v'])).data
+    e3t = iris.util.squeeze(CLE(grid_list, VarDict['e3t'])).data
+    tmask = MaskDict['tmask']
+    umask = MaskDict['umask']
+    vmask = MaskDict['vmask']
+
     if fscheme == 'een_0' or fscheme =='een_1':
         #First determine the f cell thicknesses (only needed for EEN schemes)
         e3t_copy = np.ma.copy(e3t)
-        e3t_copy[tmask] = 0.0
+        e3t_copy = e3t_copy * tmask
     
         if fscheme == 'een_0':
             e3f = (e3t_copy + ip1(e3t_copy) + jp1(e3t_copy) + ip1(jp1(e3t_copy)))/4
 
         elif fscheme == 'een_1':
             #Calculate number of masked t points surrounding the f point
-            num_masked_t = np.sum([tmask,ip1(tmask),jp1(tmask), ip1(jp1(tmask))], axis=0)
+            num_unmasked_t = np.sum([tmask,ip1(tmask),jp1(tmask), ip1(jp1(tmask))], axis=0)
 
-            e3f  = (e3t_copy + ip1(e3t_copy) + jp1(e3t_copy) + ip1(jp1(e3t_copy)))/(4-num_masked_t)
+            e3f  = (e3t_copy + ip1(e3t_copy) + jp1(e3t_copy) + ip1(jp1(e3t_copy)))/(num_unmasked_t)
 
             #F points that are completely surrounded by masked t points are zeroed
-            e3f[num_masked_t == 4] = 0.0
+            e3f[num_unmasked_t == 0] = 0.0
 
         #Edge values of e3f are zeroed as done in NEMO
         e3f[...,-1,:] = 0.0
@@ -623,24 +486,15 @@ def PVO_fullcalc(u_cube, v_cube, ff_f, e1u, e1v, e2u, e2v, e1f, e2f, e3u, e3v, e
         f3_sw[...,:,0] = 0
 
         #Calculate x and y volume fluxes
-        uflux = u_cube.data * e2u * e3u
-        vflux = v_cube.data * e1v * e3v 
+        uflux = u_cube.data * e2u * e3u * umask
+        vflux = v_cube.data * e1v * e3v * vmask
 
 
 
     else:
-        num_masked_t = np.sum([tmask,ip1(tmask),jp1(tmask), ip1(jp1(tmask))], axis=0)
-
         zwz = np.ma.copy(np.broadcast_to(ff_f, e3u.shape))
-        # zwz[num_masked_t > 0.0] = 0.0
-        # zwz[...,-1,: ] = 0.0
-        # zwz[...,: ,-1] = 0.0
-
-        uflux = u_cube.data * e2u
-        vflux = v_cube.data * e1v
-
-    uflux[uflux.mask] = 0.0
-    vflux[vflux.mask] = 0.0
+        uflux = u_cube.data * e2u * umask
+        vflux = v_cube.data * e1v * vmask
 
     #Calculate x component of PVO momentum diagnostic
     if fscheme == 'een_0' or fscheme == 'een_1':
@@ -669,17 +523,14 @@ def PVO_fullcalc(u_cube, v_cube, ff_f, e1u, e1v, e2u, e2v, e1f, e2f, e3u, e3v, e
     
     # If data is from the global model, adjust mask to maintain a consistent
     # masking convention with diagnostics from the model
-    if model == 'global':
-        umask = u_cube.data.mask
-        uPVO_zeroing_mask = tmask + ip1(tmask)
-        uPVO_zeroing_mask[...,:,0] = True
-        uPVO_zeroing_mask[...,:,-1] = True
-        uPVO_zeroing_mask = np.broadcast_to(uPVO_zeroing_mask, uPVO.shape)
-        
-        uPVO[uPVO_zeroing_mask] = 0.0
+    if no_pen_masked_log == False:
+        uPVO_zeroing_mask = tmask * ip1(tmask)
+        uPVO_zeroing_mask[...,:,0] = False
+        uPVO_zeroing_mask[...,:,-1] = False
+        uPVO = uPVO * uPVO_zeroing_mask
         
 
-    uPVO = np.ma.masked_array(uPVO.data, mask=u_cube.data.mask)
+    uPVO = np.ma.masked_array(uPVO.data, mask=np.broadcast_to(~umask, uPVO.shape))
 
 
     #Calculate y component of PVO momentum diagnostic
@@ -709,16 +560,13 @@ def PVO_fullcalc(u_cube, v_cube, ff_f, e1u, e1v, e2u, e2v, e1f, e2f, e3u, e3v, e
 
     # If data is from the global model, adjust mask to maintain a consistent
     # masking convention with diagnostics from the model
-    if model == 'global':
-        vmask = v_cube.data.mask
-        vPVO_zeroing_mask = tmask + jp1(tmask)
-        vPVO_zeroing_mask[...,0 , :] = True
-        vPVO_zeroing_mask[...,-1, :] = True
-        vPVO_zeroing_mask = np.broadcast_to(vPVO_zeroing_mask, vPVO.shape)
-        
-        vPVO[vPVO_zeroing_mask] = 0.0
+    if no_pen_masked_log == False:
+        vPVO_zeroing_mask = tmask * jp1(tmask)
+        vPVO_zeroing_mask[...,0 , :] = False
+        vPVO_zeroing_mask[...,-1, :] = False
+        vPVO = vPVO * vPVO_zeroing_mask
     
-    vPVO = np.ma.masked_array(vPVO.data, mask=v_cube.data.mask)
+    vPVO = np.ma.masked_array(vPVO.data, mask=np.broadcast_to(~vmask, vPVO.shape))
 
     #Store uPVO and vPVO as IRIS cubes
     time_coord = u_cube.coord("time")
@@ -736,7 +584,7 @@ def PVO_fullcalc(u_cube, v_cube, ff_f, e1u, e1v, e2u, e2v, e1f, e2f, e3u, e3v, e
     u_pvo_cube.add_aux_coord(lon, [2,3])
     if fscheme == 'een_0' or fscheme == 'een_1': 
         u_pvo_cube.add_aux_coord(e3f_coord, [1,2,3])
-    u_pvo_cube.attributes = {'fscheme':fscheme, 'model':model}
+    u_pvo_cube.attributes = {'fscheme':fscheme, 'no_pen_masked_log':str(no_pen_masked_log)}
 
 
     v_pvo_cube = Cube(vPVO, dim_coords_and_dims=[(time_coord,0)])
@@ -747,7 +595,7 @@ def PVO_fullcalc(u_cube, v_cube, ff_f, e1u, e1v, e2u, e2v, e1f, e2f, e3u, e3v, e
     v_pvo_cube.add_aux_coord(lon, [2,3])
     if fscheme == 'een_0' or fscheme == 'een_1':
         v_pvo_cube.add_aux_coord(e3f_coord, [1,2,3])
-    v_pvo_cube.attributes = {'fscheme':fscheme, 'model':model}
+    v_pvo_cube.attributes = {'fscheme':fscheme, 'no_pen_masked_log':str(no_pen_masked_log)}
 
     return u_pvo_cube, v_pvo_cube
 
@@ -760,7 +608,7 @@ def PVO_fullcalc(u_cube, v_cube, ff_f, e1u, e1v, e2u, e2v, e1f, e2f, e3u, e3v, e
 #                ______                              
 #               |______|                             
 
-def PVO_nulcalc(u_cube, v_cube, ff_f, e1u, e1v, e2u, e2v, e1f, e2f, e3u, e3v, tmask, model='global', fscheme='een_0'):
+def PVO_nulcalc(data_list, grid_list, VarDict, MaskDict, no_pen_masked_log = True, fscheme='een_0'):
     """
     PVO_nullcalc(u_cube, v_cube, ff_f, e1u, e1v, e2u, e2v, e1f, e2f, e3u, e3v, tmask, model='global', fscheme='een_0')
 
@@ -794,12 +642,26 @@ def PVO_nulcalc(u_cube, v_cube, ff_f, e1u, e1v, e2u, e2v, e1f, e2f, e3u, e3v, tm
 
     """
 
-    # Use 3d flux even if not EEN scheme
-    uflux = u_cube.data * e2u * e3u
-    vflux = v_cube.data * e1v * e3v
+    u_cube = CLE(data_list, VarDict['u'])
+    v_cube = CLE(data_list, VarDict['v'])
 
-    uflux[uflux.mask] = 0.0
-    vflux[vflux.mask] = 0.0
+    ff_f = iris.util.squeeze(CLE(grid_list, VarDict['ff_f'])).data
+    e1u = iris.util.squeeze(CLE(grid_list, VarDict['e1u'])).data
+    e2u = iris.util.squeeze(CLE(grid_list, VarDict['e2u'])).data
+    e1v = iris.util.squeeze(CLE(grid_list, VarDict['e1v'])).data
+    e2v = iris.util.squeeze(CLE(grid_list, VarDict['e2v'])).data
+    e1f = iris.util.squeeze(CLE(grid_list, VarDict['e1f'])).data
+    e2f = iris.util.squeeze(CLE(grid_list, VarDict['e2f'])).data
+    e3u = iris.util.squeeze(CLE(grid_list, VarDict['e3u'])).data
+    e3v = iris.util.squeeze(CLE(grid_list, VarDict['e3v'])).data
+    e3t = iris.util.squeeze(CLE(grid_list, VarDict['e3t'])).data
+    tmask = MaskDict['tmask']
+    umask = MaskDict['umask']
+    vmask = MaskDict['vmask']
+
+    # Use 3d flux even if not EEN scheme
+    uflux = u_cube.data * e2u * e3u * umask 
+    vflux = v_cube.data * e1v * e3v * vmask
 
     #Calculate the Coriolis parameter centred on the u point
     ff_u = (jm1(ff_f)*(e2u-0.5*jm1(e2f)) + 0.5*jm1(e2f)*ff_f )/e2u
@@ -823,16 +685,13 @@ def PVO_nulcalc(u_cube, v_cube, ff_f, e1u, e1v, e2u, e2v, e1f, e2f, e3u, e3v, tm
     
     # If data is from the global model, adjust mask to maintain a consistent
     # masking convention with diagnostics from the model
-    if model == 'global':
-        umask = u_cube.data.mask
-        uPVO_zeroing_mask = tmask + ip1(tmask)
-        uPVO_zeroing_mask[...,:,0] = True
-        uPVO_zeroing_mask[...,:,-1] = True
-        uPVO_zeroing_mask = np.broadcast_to(uPVO_zeroing_mask, uPVO.shape)
-        
-        uPVO[uPVO_zeroing_mask] = 0.0
-    
-    uPVO = np.ma.masked_array(uPVO.data, mask=u_cube.data.mask)
+    if no_pen_masked_log == False:
+        uPVO_zeroing_mask = tmask * ip1(tmask)
+        uPVO_zeroing_mask[...,:,0] = False
+        uPVO_zeroing_mask[...,:,-1] = False        
+        uPVO = uPVO * uPVO_zeroing_mask
+
+    uPVO = np.ma.masked_array(uPVO.data, mask=np.broadcast_to(~umask, uPVO.shape))
 
     #Calculate the y component of PVO
     vPVO = -(1/4.0)*(1/e2v)*(1/e3v)*( im1(jp1(ff_u*uflux))
@@ -848,16 +707,13 @@ def PVO_nulcalc(u_cube, v_cube, ff_f, e1u, e1v, e2u, e2v, e1f, e2f, e3u, e3v, tm
     
     # If data is from the global model, adjust mask to maintain a consistent
     # masking convention with diagnostics from the model
-    if model == 'global':
-        vmask = v_cube.data.mask
-        vPVO_zeroing_mask = tmask + jp1(tmask)
-        vPVO_zeroing_mask[...,0 , :] = True
-        vPVO_zeroing_mask[...,-1, :] = True
-        vPVO_zeroing_mask = np.broadcast_to(vPVO_zeroing_mask, vPVO.shape)
-        
-        vPVO[vPVO_zeroing_mask] = 0.0
+    if no_pen_masked_log == False:
+        vPVO_zeroing_mask = tmask * jp1(tmask)
+        vPVO_zeroing_mask[...,0 , :] = False
+        vPVO_zeroing_mask[...,-1, :] = False
+        vPVO = vPVO * vPVO_zeroing_mask
 
-    vPVO = np.ma.masked_array(vPVO.data, mask=v_cube.data.mask)
+    vPVO = np.ma.masked_array(vPVO.data, mask=np.broadcast_to(~vmask, vPVO.shape))
 
 
     time_coord = u_cube.coord("time")
@@ -874,7 +730,7 @@ def PVO_nulcalc(u_cube, v_cube, ff_f, e1u, e1v, e2u, e2v, e1f, e2f, e3u, e3v, tm
     u_nul_cube.add_aux_coord(lat, [2,3])
     u_nul_cube.add_aux_coord(lon, [2,3])
     u_nul_cube.add_aux_coord(ff_u_coord, [2,3])
-    u_nul_cube.attributes = {'model':model, 'fscheme':fscheme}
+    u_nul_cube.attributes = {'no_pen_masked_log':str(no_pen_masked_log), 'fscheme':fscheme}
 
     v_nul_cube = Cube(vPVO, dim_coords_and_dims=[(time_coord,0)])
     v_nul_cube.long_name     = 'y component of PVO (assuming constant f and cell thickness)'
@@ -883,7 +739,7 @@ def PVO_nulcalc(u_cube, v_cube, ff_f, e1u, e1v, e2u, e2v, e1f, e2f, e3u, e3v, tm
     v_nul_cube.add_aux_coord(lat, [2,3])
     v_nul_cube.add_aux_coord(lon, [2,3])
     v_nul_cube.add_aux_coord(ff_v_coord, [2,3])
-    v_nul_cube.attributes = {'model':model, 'fscheme':fscheme}
+    v_nul_cube.attributes = {'no_pen_masked_log':str(no_pen_masked_log), 'fscheme':fscheme}
 
     return u_nul_cube, v_nul_cube
 
@@ -896,7 +752,7 @@ def PVO_nulcalc(u_cube, v_cube, ff_f, e1u, e1v, e2u, e2v, e1f, e2f, e3u, e3v, tm
 #                ______                              
 #               |______|                             
 
-def PVO_betcalc(u_cube, v_cube, ff_f, e1u, e1v, e2u, e2v, e1f, e2f, e3u, e3v, tmask, model='global', fscheme ='een_0'):
+def PVO_betcalc(data_list, grid_list, VarDict, MaskDict, no_pen_masked_log = True, fscheme ='een_0'):
     """
     PVO_betacalc(u_cube, v_cube, ff_f, e1u, e1v, e2u, e2v, e1f, e2f, e3u, e3v, tmask, model='global')
 
@@ -931,6 +787,22 @@ def PVO_betcalc(u_cube, v_cube, ff_f, e1u, e1v, e2u, e2v, e1f, e2f, e3u, e3v, tm
 
     from iris.cube import Cube
     from iris.coords import AuxCoord
+
+    u_cube = CLE(data_list, VarDict['u'])
+    v_cube = CLE(data_list, VarDict['v'])
+
+    ff_f = iris.util.squeeze(CLE(grid_list, VarDict['ff_f'])).data
+    e1u = iris.util.squeeze(CLE(grid_list, VarDict['e1u'])).data
+    e2u = iris.util.squeeze(CLE(grid_list, VarDict['e2u'])).data
+    e1v = iris.util.squeeze(CLE(grid_list, VarDict['e1v'])).data
+    e2v = iris.util.squeeze(CLE(grid_list, VarDict['e2v'])).data
+    e1f = iris.util.squeeze(CLE(grid_list, VarDict['e1f'])).data
+    e2f = iris.util.squeeze(CLE(grid_list, VarDict['e2f'])).data
+    e3u = iris.util.squeeze(CLE(grid_list, VarDict['e3u'])).data
+    e3v = iris.util.squeeze(CLE(grid_list, VarDict['e3v'])).data
+    tmask = MaskDict['tmask']
+    umask = MaskDict['umask']
+    vmask = MaskDict['vmask']
     
     if fscheme == 'een_0' or fscheme == 'een_1':
         #Calculate f triads (neglecting variations in e3f)
@@ -954,11 +826,9 @@ def PVO_betcalc(u_cube, v_cube, ff_f, e1u, e1v, e2u, e2v, e1f, e2f, e3u, e3v, tm
         zwz = np.ma.copy(np.broadcast_to(ff_f, e3u.shape))
 
     #Calculate x and y volume fluxes
-    uflux = u_cube.data * e2u * e3u
-    vflux = v_cube.data * e1v * e3v
+    uflux = u_cube.data * e2u * e3u * umask
+    vflux = v_cube.data * e1v * e3v * vmask
 
-    uflux[uflux.mask] = 0.0
-    vflux[vflux.mask] = 0.0
 
 
     #Calculate the x component of PVO
@@ -989,16 +859,13 @@ def PVO_betcalc(u_cube, v_cube, ff_f, e1u, e1v, e2u, e2v, e1f, e2f, e3u, e3v, tm
     
     # If data is from the global model, adjust mask to maintain a consistent
     # masking convention with diagnostics from the model
-    if model == 'global':
-        umask = u_cube.data.mask
-        uPVO_zeroing_mask = tmask + ip1(tmask)
-        uPVO_zeroing_mask[...,:,0] = True
-        uPVO_zeroing_mask[...,:,-1] = True
-        uPVO_zeroing_mask = np.broadcast_to(uPVO_zeroing_mask, uPVO.shape)
-        
-        uPVO[uPVO_zeroing_mask] = 0.0
+    if no_pen_masked_log == False:
+        uPVO_zeroing_mask = tmask * ip1(tmask)
+        uPVO_zeroing_mask[...,:,0] = False
+        uPVO_zeroing_mask[...,:,-1] = False
+        uPVO = uPVO * uPVO_zeroing_mask
     
-    uPVO = np.ma.masked_array(uPVO.data, mask=u_cube.data.mask)
+    uPVO = np.ma.masked_array(uPVO.data, mask=np.broadcast_to(~umask, uPVO.shape))
 
     #Calculate the y component of PVO
     if fscheme == 'een_0' or fscheme == 'een_1':
@@ -1027,16 +894,13 @@ def PVO_betcalc(u_cube, v_cube, ff_f, e1u, e1v, e2u, e2v, e1f, e2f, e3u, e3v, tm
 
     # If data is from the global model, adjust mask to maintain a consistent
     # masking convention with diagnostics from the model
-    if model == 'global':
-        vmask = v_cube.data.mask
-        vPVO_zeroing_mask = tmask + jp1(tmask)
-        vPVO_zeroing_mask[...,0 , :] = True
-        vPVO_zeroing_mask[...,-1, :] = True
-        vPVO_zeroing_mask = np.broadcast_to(vPVO_zeroing_mask, vPVO.shape)
-        
-        vPVO[vPVO_zeroing_mask] = 0.0
+    if no_pen_masked_log == False:
+        vPVO_zeroing_mask = tmask * jp1(tmask)
+        vPVO_zeroing_mask[...,0 , :] = False
+        vPVO_zeroing_mask[...,-1, :] = False
+        vPVO = vPVO * vPVO_zeroing_mask
 
-    vPVO = np.ma.masked_array(vPVO.data, mask=v_cube.data.mask)
+    vPVO = np.ma.masked_array(vPVO.data, mask=np.broadcast_to(~vmask, vPVO.shape))
 
     time_coord = u_cube.coord("time")
     lat = u_cube.coord("latitude")
@@ -1049,7 +913,7 @@ def PVO_betcalc(u_cube, v_cube, ff_f, e1u, e1v, e2u, e2v, e1f, e2f, e3u, e3v, tm
     u_bet_cube.units         = 'm/s2'
     u_bet_cube.add_aux_coord(lat, [2,3])
     u_bet_cube.add_aux_coord(lon, [2,3])
-    u_bet_cube.attributes = {'model':model, 'fscheme':fscheme}
+    u_bet_cube.attributes = {'no_pen_masked_log':str(no_pen_masked_log), 'fscheme':fscheme}
 
     v_bet_cube = Cube(vPVO, dim_coords_and_dims=[(time_coord,0)])
     v_bet_cube.long_name     = 'y component of PVO (assuming constant cell thickness)'
@@ -1057,7 +921,7 @@ def PVO_betcalc(u_cube, v_cube, ff_f, e1u, e1v, e2u, e2v, e1f, e2f, e3u, e3v, tm
     v_bet_cube.units         = 'm/s2'
     v_bet_cube.add_aux_coord(lat, [2,3])
     v_bet_cube.add_aux_coord(lon, [2,3])
-    v_bet_cube.attributes = {'model':model, 'fscheme':fscheme}
+    v_bet_cube.attributes = {'no_pen_masked_log':str(no_pen_masked_log), 'fscheme':fscheme}
 
     return u_bet_cube, v_bet_cube
 
@@ -1070,7 +934,7 @@ def PVO_betcalc(u_cube, v_cube, ff_f, e1u, e1v, e2u, e2v, e1f, e2f, e3u, e3v, tm
 #                ______| |                             
 #               |______|_|                             
 
-def PVO_prccalc(u_cube, v_cube, ff_f, e1u, e1v, e2u, e2v, e1f, e2f, e3u, e3v, e3t, tmask, fscheme='een_0', model='global'):
+def PVO_prccalc( data_list, grid_list, VarDict, MaskDict, fscheme='een_0', no_pen_masked_log = True):
     """
     PVO_prccalc(u_cube, v_cube, ff_f, e1u, e1v, e2u, e2v, e1f, e2f, e3u, e3v, e3t, tmask, fscheme='een_0', model='global')
 
@@ -1114,19 +978,37 @@ def PVO_prccalc(u_cube, v_cube, ff_f, e1u, e1v, e2u, e2v, e1f, e2f, e3u, e3v, e3
     v_prc_cube - IRIS cube, y component of the recreated PVO momentum diagnostic  (t,z,y,x) [m/s2]
 
     """
+    
+    u_cube = CLE(data_list, VarDict['u'])
+    v_cube = CLE(data_list, VarDict['v'])
+
+    ff_f = iris.util.squeeze(CLE(grid_list, VarDict['ff_f'])).data
+    e1u = iris.util.squeeze(CLE(grid_list, VarDict['e1u'])).data
+    e2u = iris.util.squeeze(CLE(grid_list, VarDict['e2u'])).data
+    e1v = iris.util.squeeze(CLE(grid_list, VarDict['e1v'])).data
+    e2v = iris.util.squeeze(CLE(grid_list, VarDict['e2v'])).data
+    e1f = iris.util.squeeze(CLE(grid_list, VarDict['e1f'])).data
+    e2f = iris.util.squeeze(CLE(grid_list, VarDict['e2f'])).data
+    e3u = iris.util.squeeze(CLE(grid_list, VarDict['e3u'])).data
+    e3v = iris.util.squeeze(CLE(grid_list, VarDict['e3v'])).data
+    e3t = iris.util.squeeze(CLE(grid_list, VarDict['e3t'])).data
+    tmask = MaskDict['tmask']
+    umask = MaskDict['umask']
+    vmask = MaskDict['vmask']
+
     if fscheme == 'een_0' or fscheme == 'een_1':
         #First determine f cell thicknesses
         e3t_copy = np.ma.copy(e3t)
-        e3t_copy[tmask] = 0.0
+        e3t_copy = e3t_copy * tmask
         
         if fscheme == 'een_0':
             e3f = (e3t_copy + ip1(e3t_copy) + jp1(e3t_copy) + ip1(jp1(e3t_copy)))/4
 
         else:
-            num_masked_t = np.sum([tmask,ip1(tmask),jp1(tmask), ip1(jp1(tmask))], axis=0)
-            e3f  = (e3t_copy + ip1(e3t_copy) + jp1(e3t_copy) + ip1(jp1(e3t_copy)))/(4-num_masked_t)
+            num_unmasked_t = np.sum([tmask,ip1(tmask),jp1(tmask), ip1(jp1(tmask))], axis=0)
+            e3f  = (e3t_copy + ip1(e3t_copy) + jp1(e3t_copy) + ip1(jp1(e3t_copy)))/(num_unmasked_t)
             
-            e3f[num_masked_t == 4] = 0.0
+            e3f[num_unmasked_t == 0] = 0.0
 
         #Set edge values to zero as done in NEMO
         e3f[...,-1,:] = 0.0
@@ -1158,18 +1040,14 @@ def PVO_prccalc(u_cube, v_cube, ff_f, e1u, e1v, e2u, e2v, e1f, e2f, e3u, e3v, e3
         e3_sw[...,:,0] = 0
 
         #Calculate x and y fluxes
-        uflux = u_cube.data * e2u * e3u
-        vflux = v_cube.data * e1v * e3v
+        uflux = u_cube.data * e2u * e3u * umask
+        vflux = v_cube.data * e1v * e3v * vmask
 
     else:
         zwz = np.ma.copy(np.broadcast_to(ff_f, e3u.shape))
 
-        uflux = u_cube.data * e2u
-        vflux = v_cube.data * e1v
-
-
-    uflux[uflux.mask] = 0.0
-    vflux[vflux.mask] = 0.0
+        uflux = u_cube.data * e2u * umask
+        vflux = v_cube.data * e1v * vmask
 
     #Calculate the Coriolis parameter centred on u points
     ff_u = (jm1(ff_f)*(e2u-0.5*jm1(e2f)) + 0.5*jm1(e2f)*ff_f )/e2u
@@ -1206,16 +1084,13 @@ def PVO_prccalc(u_cube, v_cube, ff_f, e1u, e1v, e2u, e2v, e1f, e2f, e3u, e3v, e3
     
     # If data is from the global model, adjust mask to maintain a consistent
     # masking convention with diagnostics from the model
-    if model == 'global':
-        umask = u_cube.data.mask
-        uPVO_zeroing_mask = tmask + ip1(tmask)
-        uPVO_zeroing_mask[...,:,0] = True
-        uPVO_zeroing_mask[...,:,-1] = True
-        uPVO_zeroing_mask = np.broadcast_to(uPVO_zeroing_mask, uPVO.shape)
-        
-        uPVO[uPVO_zeroing_mask] = 0.0
+    if no_pen_masked_log == False:
+        uPVO_zeroing_mask = tmask * ip1(tmask)
+        uPVO_zeroing_mask[...,:,0] = False
+        uPVO_zeroing_mask[...,:,-1] = False        
+        uPVO = uPVO * uPVO_zeroing_mask
 
-    uPVO = np.ma.masked_array(uPVO.data, mask=u_cube.data.mask)
+    uPVO = np.ma.masked_array(uPVO.data, mask=np.broadcast_to(~umask, uPVO.shape))
 
     #Calculate the y component of PVO
     if fscheme == 'een_0' or fscheme =='een_1':
@@ -1243,16 +1118,13 @@ def PVO_prccalc(u_cube, v_cube, ff_f, e1u, e1v, e2u, e2v, e1f, e2f, e3u, e3v, e3
 
     # If data is from the global model, adjust mask to maintain a consistent
     # masking convention with diagnostics from the model    
-    if model == 'global':
-        vmask = v_cube.data.mask
-        vPVO_zeroing_mask = tmask + jp1(tmask)
-        vPVO_zeroing_mask[...,0 , :] = True
-        vPVO_zeroing_mask[...,-1, :] = True
-        vPVO_zeroing_mask = np.broadcast_to(vPVO_zeroing_mask, vPVO.shape)
-        
-        vPVO[vPVO_zeroing_mask] = 0.0
+    if no_pen_masked_log == False:
+        vPVO_zeroing_mask = tmask * jp1(tmask)
+        vPVO_zeroing_mask[...,0 , :] = False
+        vPVO_zeroing_mask[...,-1, :] = False
+        vPVO = vPVO * vPVO_zeroing_mask
 
-    vPVO = np.ma.masked_array(vPVO.data, mask=v_cube.data.mask)
+    vPVO = np.ma.masked_array(vPVO.data, mask=np.broadcast_to(~vmask, vPVO.shape))
 
     time_coord = u_cube.coord("time")
     lat = u_cube.coord("latitude")
@@ -1269,7 +1141,7 @@ def PVO_prccalc(u_cube, v_cube, ff_f, e1u, e1v, e2u, e2v, e1f, e2f, e3u, e3v, e3
     u_prc_cube.add_aux_coord(lat, [2,3])
     u_prc_cube.add_aux_coord(lon, [2,3])
     u_prc_cube.add_aux_coord(ff_u_coord, [2,3])
-    u_prc_cube.attributes = {'fscheme':fscheme, 'model':model}
+    u_prc_cube.attributes = {'fscheme':fscheme, 'no_pen_masked_log':str(no_pen_masked_log)}
 
     v_prc_cube = Cube(vPVO, dim_coords_and_dims=[(time_coord,0)])
     v_prc_cube.long_name     = 'y component of PVO (assuming f = f0)'
@@ -1278,6 +1150,6 @@ def PVO_prccalc(u_cube, v_cube, ff_f, e1u, e1v, e2u, e2v, e1f, e2f, e3u, e3v, e3
     v_prc_cube.add_aux_coord(lat, [2,3])
     v_prc_cube.add_aux_coord(lon, [2,3])
     v_prc_cube.add_aux_coord(ff_v_coord, [2,3])
-    v_prc_cube.attributes = {'fscheme':fscheme, 'model':model}
+    v_prc_cube.attributes = {'fscheme':fscheme, 'no_pen_masked_log':str(no_pen_masked_log)}
 
     return u_prc_cube, v_prc_cube

@@ -30,9 +30,17 @@ from iris.coords import AuxCoord
 from skimage.measure import find_contours
 from skimage.measure import grid_points_in_poly
 from scipy.interpolate import griddata
+from scipy.sparse import lil_matrix, vstack
 
-def niiler_integral2D(vort_2D_dict, sf_zint_cube, area_weights, nlevels=201, level_min=False, level_max=False, 
-                      lonlatbounds=None, interpolation=None, res=1/12.0, R=6400.0e3):
+import sys
+import os
+sys.path.append(os.path.abspath("../lib"))
+from cube_prep import CubeListExtract as CLE
+from CGridOperations import im1, ip1, jm1, jp1
+
+def niiler_integral2D(vort_2D_dict, sf_zint_cube, grid_list, VarDict, MaskDict,
+                      nlevels=201, level_min=False, level_max=False, 
+                      lonlatbounds=None, interpolation=None, ref=1):
     """
     niiler_integral2D(vort_2D_dict, sf_zint_cube, area_weights, nlevels=201, level_min=False, level_max=False, 
                       lonlatbounds=None, interpolation=None, res=1/12.0, R=6400.0e3):
@@ -66,7 +74,16 @@ def niiler_integral2D(vort_2D_dict, sf_zint_cube, area_weights, nlevels=201, lev
     """
 
     tm_sf_zint = np.mean(sf_zint_cube.data, axis=0)
+
+    e1f = iris.util.squeeze(CLE(grid_list, VarDict['e1f'])).data
+    e2f = iris.util.squeeze(CLE(grid_list, VarDict['e2f'])).data
     
+    tmaskutil = MaskDict['tmaskutil']
+    fmask = np.ma.make_mask(tmaskutil * jp1(tmaskutil) * ip1(tmaskutil) * ip1(jp1(tmaskutil)))
+    fmask[...,: ,-1]   = False
+    fmask[...,-1,: ]   = False
+
+
     tm_vort_2D_dict = {}
     
     for label in vort_2D_dict:
@@ -86,17 +103,23 @@ def niiler_integral2D(vort_2D_dict, sf_zint_cube, area_weights, nlevels=201, lev
     if interpolation == 'linear':
         print("Interpolating to fine grid")
 
-        tm_sf_zint, lon_finegrid, lat_finegrid = interp_to_finegrid(tm_sf_zint, lon, lat, res, lonlatbounds=lonlatbounds)
-        
+        tm_sf_zint, x_finegrid, y_finegrid, mask_finegrid, area_weights = interp_to_finegrid(tm_sf_zint, e1f, e2f, ref,
+                                                                    fmask, lon, lat, lonlatbounds=lonlatbounds)
+
+
+
         for label in tm_vort_2D_dict:
             tm_vc_zint = tm_vort_2D_dict[label]
-            tm_vc_zint, lon_finegrid, lat_finegrid = interp_to_finegrid(tm_vc_zint, lon, lat, res, lonlatbounds=lonlatbounds)
+            tm_vc_zint, x_finegrid, y_finegrid, mask_finegrid, area_weights = interp_to_finegrid(tm_vc_zint, e1f, e2f, ref,
+                                                                    fmask, lon, lat, lonlatbounds=lonlatbounds, 
+                                                                    xnewin=x_finegrid, ynewin=y_finegrid, 
+                                                                    masknewin=mask_finegrid, areanewin=area_weights)
             tm_vort_2D_dict[label] = tm_vc_zint
-
-        area_weights = (R**2)*((res*(np.pi/180))**2)*np.cos(lat_finegrid*np.pi/180.0)
 
     elif isinstance(lonlatbounds, tuple):  #Application of lonlatbounds without interpolation 
         
+        area_weights = e1f*e2f
+
         lon_min = lonlatbounds[0]
         lon_max = lonlatbounds[1]
         lat_min = lonlatbounds[2]
@@ -112,36 +135,56 @@ def niiler_integral2D(vort_2D_dict, sf_zint_cube, area_weights, nlevels=201, lev
             tm_vc_zint = tm_vort_2D_dict[label]
             tm_vc_zint = np.ma.masked_array(tm_vc_zint, mask=new_mask)
 
+    else:
+
+        area_weights = e1f*e2f
+
+        for label in tm_vort_2D_dict:
+            tm_vc_zint = tm_vort_2D_dict[label]
+
         
-    integrals_out_dict, levels_out, areas_out, mask_out, contour_masks_out = contour_integral( tm_vort_2D_dict, tm_sf_zint,
-                                                    area_weights, level_min=level_min, level_max=level_max, nlevels=nlevels)
+
+        
+    integrals_out_dict, levels_out, areas_out, mask_out, contour_masks_out = contour_integral( tm_vort_2D_dict, 
+                                                    tm_sf_zint, area_weights, level_min=level_min, level_max=level_max,
+                                                    nlevels=nlevels)
     
     
     #Save output as IRIS cube >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
     sf_level_coord = AuxCoord(levels_out, long_name='sf_zint_level', units=sf_zint_cube.units)
-    area_coord = AuxCoord(areas_out, long_name='enclosed_area', units='m2')
     cubes_out_dict = {}
     
     for label in integrals_out_dict:
         output_cube = Cube(integrals_out_dict[label])
         output_cube.long_name = 'NiilerIntegral2D(' + label + ')'
-        output_cube.var_name = 'Ni2D_' + label
+        output_cube.var_name = 'Ni2D' + label
         output_cube.units = 'm3/s2'
         output_cube.add_aux_coord(sf_level_coord, [0])
-        output_cube.add_aux_coord(area_coord, [0])
-        
         cubes_out_dict[label] = output_cube
         
     
-    contour_masks_out = np.array(contour_masks_out, dtype=bool)
-#     Annoyingly IRIS does not allow the saving of boolean data as a cube. A pickle file will have to do    
-#     contour_masks_cube = Cube(np.array(contour_masks_out,dtype='bool'))
-#     contour_masks_cube.long_name = 'contour_masks'
-#     contour_masks_cube.var_name = 'cont_masks'
-#     contour_masks_cube.units = 'no_unit'
-#     contour_masks_cube.add_aux_coord(sf_level_coord, [0])
+    contour_masks_out = np.array(contour_masks_out, dtype=int)
+    contour_masks_cube = Cube(contour_masks_out)
+    contour_masks_cube.long_name = 'contour_masks'
+    contour_masks_cube.var_name = 'cont_masks'
+    contour_masks_cube.units = 'no_unit'
+    contour_masks_cube.add_aux_coord(sf_level_coord, [0])
+
+    enclosed_area_cube = Cube(areas_out)
+    enclosed_area_cube.long_name = 'enclosed_area'
+    enclosed_area_cube.var_name = 'Ni2D_area'
+    enclosed_area_cube.units = 'm2'
+    enclosed_area_cube.add_aux_coord(sf_level_coord, [0])
+    
+    if interpolation == 'linear':
+        x_finegrid_coord = AuxCoord(x_finegrid, long_name='x_finegrid', units='m')
+        y_finegrid_coord = AuxCoord(y_finegrid, long_name='y_finegrid', units='m')
+        contour_masks_cube.add_aux_coord(x_finegrid_coord, [1,2])
+        contour_masks_cube.add_aux_coord(y_finegrid_coord, [1,2])
+
+#     Annoyingly IRIS does not allow the saving of boolean data as a cube.
             
-    return cubes_out_dict, contour_masks_out
+    return cubes_out_dict, contour_masks_cube, enclosed_area_cube
 
 #                  _                   _       _                       _ 
 #                 | |                 (_)     | |                     | |
@@ -152,7 +195,7 @@ def niiler_integral2D(vort_2D_dict, sf_zint_cube, area_weights, nlevels=201, lev
 #                                ______                 __/ |            
 #                               |______|               |___/             
 
-def contour_integral(integrand_dict, contour_field, area_weights, level_min=False, level_max=False, nlevels = 101):
+def contour_integral(integrand_dict, contour_field, area_weights, level_min=None, level_max=None, nlevels = 101):
     """
     contour_integral(integrand_dict, contour_field, area_weights, level_min=False, level_max=False, nlevels = 101)
 
@@ -186,10 +229,10 @@ def contour_integral(integrand_dict, contour_field, area_weights, level_min=Fals
 
 
     #If min/max levels are not given, use the min/max of the contour field
-    if level_min == False:
+    if level_min is None:
         level_min = np.min(contour_field)
 
-    if level_max == False:
+    if level_max is None:
         level_max = np.max(contour_field)
 
     #Define a linear space of levels
@@ -293,7 +336,7 @@ def contour_integral(integrand_dict, contour_field, area_weights, level_min=Fals
 #                      | |______   ______                 __/ |             
 #                      |_|______| |______|               |___/              
 
-def interp_to_finegrid(array, lon, lat, res, lonlatbounds=None):
+def interp_to_finegrid(array, e1, e2, ref, mask, lon, lat, lonlatbounds=None,  xnewin=None, ynewin=None, masknewin=None, areanewin=None):
     """
     interp_to_finegrid(array, lon, lat, res, lonlatbounds=None):
 
@@ -310,10 +353,7 @@ def interp_to_finegrid(array, lon, lat, res, lonlatbounds=None):
     """
     import numpy as np
     from scipy.interpolate import griddata
-    
-    lon_datagrid = np.broadcast_to(lon, array.shape)
-    lat_datagrid = np.broadcast_to(lat, array.shape)
-    
+
     #Mask variables outside of bounds if specified
     if isinstance(lonlatbounds, tuple):
         lon_min = lonlatbounds[0]
@@ -321,43 +361,72 @@ def interp_to_finegrid(array, lon, lat, res, lonlatbounds=None):
         lat_min = lonlatbounds[2]
         lat_max = lonlatbounds[3]
         
-        extramask = (lon < lon_min) + (lon > lon_max) + (lat < lat_min) + (lat > lat_max)
-        extramask = np.broadcast_to(extramask, array.shape)
-        new_mask = np.ma.mask_or(array.mask, extramask)
-        array = np.ma.masked_array(array, mask=new_mask)
-        
+        extramask = (lon > lon_min) * (lon < lon_max) * (lat > lat_min) * (lat < lat_max)
+        mask = np.ma.make_mask(mask * extramask)
+
     else:
         lon_min = np.min(lon)
         lon_max = np.max(lon)
         lat_min = np.min(lat)
         lat_max = np.max(lat)
+
+    nx = int(e1.shape[-1])
+    ny = int(e1.shape[-2])
+    
+    if (xnewin is None) or (ynewin is None) or (masknewin is None) or (areanewin is None):
+
+        #Generate a sequence of sparse matrices to refine the grid
+        block_seq = []
+        for i in range(nx*ny):
+            block_sparse = lil_matrix((ref, nx*ny))
+            block_sparse[:,i] = int(1)
+            block_seq = block_seq + [block_sparse]
         
-        extramask = np.zeros(array.shape, dtype=bool)
-    
-    #Construct fine grid to interpolate on to
-    lon_finecoord = np.linspace( lon_min , lon_max, num=int((lon_max-lon_min)/res))
-    lat_finecoord = np.linspace( lat_min , lat_max, num=int((lat_max-lat_min)/res))
-    
-    lon_finegrid, lat_finegrid = np.meshgrid(lon_finecoord, lat_finecoord)
+        full_sparse = vstack(block_seq)
+
+        e1new = (1/ref)*(full_sparse @ e1.flatten(order='C')).reshape((ny, ref*nx), order='C')
+        e2new =         (full_sparse @ e2.flatten(order='C')).reshape((ny, ref*nx), order='C')
+        masknew =       (full_sparse @ mask.flatten(order='C')).reshape((ny, ref*nx), order='C')
+
+
+        block_seq = []
+        for i in range(ref*nx*ny):
+            block_sparse = lil_matrix((ref, ref*nx*ny))
+            block_sparse[:,i] = int(1)
+            block_seq = block_seq + [block_sparse]
+        
+        full_sparse = vstack(block_seq)
+
+        e1new =            (full_sparse @ e1new.flatten(order='F')).reshape((ref*ny, ref*nx), order='F')
+        e2new =  (1/ref) * (full_sparse @ e2new.flatten(order='F')).reshape((ref*ny, ref*nx), order='F')
+        masknew =          (full_sparse @ masknew.flatten(order='F')).reshape((ref*ny, ref*nx), order='F')
+        
+        areanew = e1new * e2new
+        masknew = np.ma.make_mask(masknew)
+        xnew = np.cumsum(e1new,axis=-1) - 0.5*np.expand_dims(e1new[:,0],1)
+        ynew = np.cumsum(e2new, axis=-2) - 0.5*np.expand_dims(e2new[0,:],0)
+
+    else:
+        areanew = areanewin
+        masknew = masknewin
+        xnew = xnewin
+        ynew = ynewin
+
+    x = np.cumsum(e1, axis=-1) - 0.5*np.expand_dims(e1[:,0],1)
+    y = np.cumsum(e2, axis=-2) - 0.5*np.expand_dims(e2[0,:],0)
     
     #Interpolate the data values using scipy griddata for interpolating to gridded data
-    points = (lon_datagrid[~array.mask], lat_datagrid[~array.mask])
-    values = array[~array.mask]
-    interp = griddata(points, values, (lon_finegrid, lat_finegrid), method = 'linear')
+    points = (x[mask], y[mask])
+    values = array[np.broadcast_to(mask,array.shape)]
+    interp = griddata(points, values, (xnew, ynew), method = 'linear')
     interp = np.ma.masked_invalid(interp)
     
-    #Interpolate the mask so that any non-zero values implies the value ought to be masked
-    mask_points = (lon_datagrid[~extramask], lat_datagrid[~extramask])
-    mask_values = array.mask[~extramask]
-    interp_mask = griddata(mask_points, mask_values, (lon_finegrid, lat_finegrid), method='linear')
+    output_values = np.ma.masked_array(interp, mask=np.broadcast_to(~masknew, interp.shape))
+    output_values = np.ma.masked_invalid(output_values)
 
-    #Add the interpolated mask to the already existing one
-    final_mask = interp.mask + interp_mask
-    output_values = np.ma.masked_array(interp, mask=final_mask)
-    
-    return output_values, lon_finegrid, lat_finegrid
+    return output_values, xnew, ynew, masknew, areanew
 
-def DepIntSF_orca(u_cube, e1u, e2u, e3u, e1f):
+def DepIntSF_orca(data_list, grid_list, VarDict, MaskDict, intdirection='N'):
     """
     DepIntSF_orca(u_cube, e1u, e2u, e3u, e1f)
 
@@ -373,42 +442,63 @@ def DepIntSF_orca(u_cube, e1u, e2u, e3u, e1f):
     Returns depth-integrated stream function centred on f points of the C grid as an IRIS cube
     sf_zint_cube - IRIS cube of depth-integrated stream function  (t,y,x)  [Sv] 
     """
-       
-    u_zint = np.sum(u_cube.data*e3u, axis=1)
-    
-    e1u = np.broadcast_to(e1u, u_zint.shape)
-    e2u = np.broadcast_to(e2u, u_zint.shape)
-    e1f = np.broadcast_to(e1f, u_zint.shape)
 
-    integrand = -u_zint*e2u
+    if (intdirection.upper() == 'N' or intdirection.upper() == 'S'):
+        vel_cube = CLE(data_list, VarDict['u'])
+        mask = MaskDict['umask']
+        maskutil = MaskDict['umaskutil']
+        e3 = iris.util.squeeze(CLE(grid_list, VarDict['e3u'])).data
+        e1 = iris.util.squeeze(CLE(grid_list, VarDict['e1u'])).data
+        e2 = iris.util.squeeze(CLE(grid_list, VarDict['e2u'])).data
 
-    sf_zint = np.cumsum(integrand, axis=-2)
-    
-    #swap axis order termporarily for easier broadcasting (put y axis at start)
-    sf_zint = np.swapaxes(sf_zint, -2, 0)
-    
-    sf_zint = sf_zint - np.broadcast_to(sf_zint[0,...],sf_zint.shape)
-    
-    #swap axis order back to original state
-    sf_zint = np.swapaxes(sf_zint,-2, 0)
-    
+    elif (intdirection.upper() == 'W' or intdirection.upper() == 'E'):
+        vel_cube = CLE(data_list, VarDict['v'])
+        mask = MaskDict['vmask']
+        maskutil = MaskDict['vmaskutil']
+        e3 = iris.util.squeeze(CLE(grid_list, VarDict['e3v'])).data
+        e1 = iris.util.squeeze(CLE(grid_list, VarDict['e1v'])).data
+        e2 = iris.util.squeeze(CLE(grid_list, VarDict['e2v'])).data
+
+    e1f = iris.util.squeeze(CLE(grid_list, VarDict['e1f'])).data
+    e2f = iris.util.squeeze(CLE(grid_list, VarDict['e2f'])).data
+
+    vel_zint = np.sum(vel_cube.data*e3*mask, axis=-3)
+
+    if intdirection.upper() == 'N': 
+        integrand = -vel_zint*e2
+        sf_zint = np.cumsum(integrand, axis=-2)
+
+    elif intdirection.upper() == 'S':
+        integrand = +vel_zint*e2
+        sf_zint = np.flip(np.cumsum(np.flip(integrand,axis=-2), axis=-2),axis=-2)
+
+    elif intdirection.upper() == 'E':
+        integrand = +vel_zint * e1
+        sf_zint= np.cumsum(integrand, axis=-1)
+
+    elif intdirection.upper() == 'W':
+        integrand = -vel_zint * e1
+        sf_zint= np.flip(np.cumsum(np.flip(integrand,axis=-1), axis=-1),axis=-1)
+
+    sf_zint = np.ma.masked_array(sf_zint, 
+                                 mask=np.broadcast_to(~np.ma.make_mask(maskutil), sf_zint.shape))
+
     #Save stream function as an iris cube
-    time = u_cube.coord("time")
+    time = vel_cube.coord("time")
     
-    sf_zint_cube = Cube(sf_zint/(10**6), dim_coords_and_dims=[(time,0)])
-    
+    sf_zint_cube = Cube(sf_zint/(1e6), dim_coords_and_dims=[(time,0)])    
     sf_zint_cube.standard_name = 'ocean_barotropic_streamfunction'
     sf_zint_cube.long_name = 'Depth integrated stream function'
     sf_zint_cube.var_name = 'sf_zint'
     sf_zint_cube.units = 'Sv'
     sf_zint_cube.description = 'ocean streamfunction variables'
     
-    lat = u_cube.coord("latitude")
-    lon = u_cube.coord("longitude")
+    lat = vel_cube.coord("latitude")
+    lon = vel_cube.coord("longitude")
     
     sf_zint_cube.add_aux_coord(lat, [1,2])
     sf_zint_cube.add_aux_coord(lon, [1,2])
-    
+
     return sf_zint_cube
 
 def NI_ADV_calc(Ni_keg_cube, Ni_rvo_cube, Ni_zad_cube):
@@ -419,14 +509,12 @@ def NI_ADV_calc(Ni_keg_cube, Ni_rvo_cube, Ni_zad_cube):
     from iris.cube import Cube
     
     sf_level_coord = Ni_keg_cube.coord("sf_zint_level")
-    area_coord = Ni_keg_cube.coord("enclosed_area")
     
     Ni_adv_cube = Cube(Ni_keg_cube.data + Ni_rvo_cube.data + Ni_zad_cube.data)
-    Ni_adv_cube.long_name = 'NiilerIntegral2D(ADV)'
-    Ni_adv_cube.var_name = 'Ni2D_ADV'
+    Ni_adv_cube.long_name = 'NiilerIntegral2D(_adv)'
+    Ni_adv_cube.var_name = 'Ni2D_adv'
     Ni_adv_cube.units = 'm3/s2'
     Ni_adv_cube.add_aux_coord(sf_level_coord, [0])
-    Ni_adv_cube.add_aux_coord(area_coord, [0])
     
     return Ni_adv_cube
 
@@ -438,16 +526,14 @@ def NI_ZDF_calc(Ni_wnd_cube, Ni_frc_cube, icelog=False, Ni_ice_cube = None):
     from iris.cube import Cube
     
     sf_level_coord = Ni_wnd_cube.coord("sf_zint_level")
-    area_coord = Ni_wnd_cube.coord("enclosed_area")
     
     if icelog == False: Ni_zdf_cube = Cube(Ni_wnd_cube.data + Ni_frc_cube.data)
     else: Ni_zdf_cube = Cube(Ni_wnd_cube.data + Ni_frc_cube.data + Ni_ice_cube.data)
     
-    Ni_zdf_cube.long_name = 'NiilerIntegral2D(ZDF)'
-    Ni_zdf_cube.var_name = 'Ni2D_ZDF'
+    Ni_zdf_cube.long_name = 'NiilerIntegral2D(_zdf)'
+    Ni_zdf_cube.var_name = 'Ni2D_zdf'
     Ni_zdf_cube.units = 'm3/s2'
     Ni_zdf_cube.add_aux_coord(sf_level_coord, [0])
-    Ni_zdf_cube.add_aux_coord(area_coord, [0])
     
     return Ni_zdf_cube
     
@@ -459,16 +545,14 @@ def NI_RES_calc(Ni_adv_cube, Ni_pvo_cube, Ni_hpg_cube, Ni_ldf_cube, Ni_zdf_cube,
     from iris.cube import Cube
     
     sf_level_coord = Ni_adv_cube.coord("sf_zint_level")
-    area_coord = Ni_adv_cube.coord("enclosed_area")
     
     Ni_res_cube = Cube(Ni_adv_cube.data + Ni_pvo_cube.data + Ni_hpg_cube.data
                        + Ni_ldf_cube.data + Ni_zdf_cube.data - Ni_tot_cube.data)
     
-    Ni_res_cube.long_name = 'NiilerIntegral2D(RES)'
-    Ni_res_cube.var_name = 'Ni2D_RES'
+    Ni_res_cube.long_name = 'NiilerIntegral2D(_res)'
+    Ni_res_cube.var_name = 'Ni2D_res'
     Ni_res_cube.units = 'm3/s2'
     Ni_res_cube.add_aux_coord(sf_level_coord, [0])
-    Ni_res_cube.add_aux_coord(area_coord, [0])
     
     return Ni_res_cube
 
@@ -492,12 +576,12 @@ def take_largest_contour(int_out, level_out, area_out):
     output_level = []
     
     for level in levels_unique:
-        values = int_out[(level_out == level)]
+        values = int_out[(level_out == level),...]
         areas = area_out[(level_out == level)]
-        large_area_value = values[ areas == np.max(areas) ]
+        large_area_value = values[ areas == np.max(areas),... ]
         
         if not np.ma.is_masked(large_area_value):
-            output_value = output_value + [ np.mean(large_area_value) ]
+            output_value = output_value + [ np.mean(large_area_value,axis=0) ]
             output_level = output_level + [level]
         
     output_value = np.squeeze(np.array(output_value))

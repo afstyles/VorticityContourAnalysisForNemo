@@ -128,16 +128,12 @@ def kcurl_orca(u, v, e1u, e2v, e1f, e2f, xaxis=-1, yaxis=-2):
     Returns k-curl of the vector quantity (u,v)
     kcurl - Array of the k-curl                          [...,y,x]
     """
-    
-    e1u = np.broadcast_to(e1u, u.shape)
-    e2v = np.broadcast_to(e2v, u.shape)
-    e1f = np.broadcast_to(e1f, u.shape)
-    e2f = np.broadcast_to(e2f, u.shape)
 
     #Roll and mask weighted velocities
     u_e1u_roll = roll_and_mask(u*e1u, -1, axis=yaxis) # =u*e1u[ i ,j+1]
     v_e2v_roll = roll_and_mask(v*e2v, -1, axis=xaxis) # =v*e2v[i+1, j ]
     
     kcurl = (v_e2v_roll - v*e2v - u_e1u_roll + u*e1u)/(e1f*e2f)
+    kcurl[kcurl.mask] = 0.
     
     return kcurl
