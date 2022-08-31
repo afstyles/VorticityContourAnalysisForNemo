@@ -24,7 +24,6 @@ import iris
 from iris.cube import Cube
 from iris.coords import AuxCoord
 import numpy as np
-from pyrsistent import v
 import CGridOperations as CGO
 from CGridOperations import im1, ip1, jm1, jp1, roll_and_mask
 
