@@ -1,0 +1,9 @@
+name: vcan
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.9.*
+  - iris=3.1.0
+  - scikit-image
+prefix: /home/styles/anaconda3/envs/vcan
