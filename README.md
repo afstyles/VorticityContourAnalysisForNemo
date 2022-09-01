@@ -11,6 +11,27 @@ The code has been tested on data from the NEMO global model and the GYRE model b
 * Integrate the vorticity diagnostics over the areas enclosed by calculated streamlines.
 * Plot the results of these calculations in an iPython notebook
 
+### Installation
+
+VCAN is written in Python 3 and uses the two following additional modules
+
+* iris (version 3.1.0)
+* scikit-image (version 0.19.2)
+
+An environment.yml file has been provided for an easy setup of the minimal conda environment. To setup the conda environment using the file, use the following commands
+
+```
+conda config --set channel_priority strict
+conda env create -n vcan_environment --file environment.yml
+```
+
+This code has also been used extensively on [JASMIN](https://jasmin.ac.uk/) and will work with jaspy (version 3.7)
+
+```
+module load jaspy/3.7/r20200606
+```
+
+
 ### Structure
 There are three folders in this repository
 
@@ -19,13 +40,7 @@ There are three folders in this repository
 
 ```
 cd exe
-python executable.py /path/to/data/directory/ n
-```
-Where n is the inverse resolution of the gridded data. For example, to analyse data on an ORCA025 (1/4 degree) grid you would run
-
-```
-cd exe
-python executable.py /path/to/data/directory/ 4
+python executable.py /path/to/data/directory/
 ```
 
 * VCAN.py -The functions in `VCAN.py` are called by `executable.py` and is the main body of the program. This script shouldn't need to be edited unless you aim to significantly alter the analysis.
