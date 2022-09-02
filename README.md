@@ -54,6 +54,19 @@ python executable.py /path/to/data/directory/
 `int/` - Contains interactive notebooks:
 * `plotting.ipynb` - Plots the depth-integrated stream function, the vorticity diagnostics and contour integration results.
 
+`test_data` - Contains a small test data set
+* `R1_SLOPED` - Minimal outputs from a modified version of the GYRE_PISCES configuration. Contains 4 grid files (grid_T, grid_U, grid_V, grid_W) and a mesh_mask.nc file.
+
+# Analyzing the test data
+* `exe/executable.py` is already set up to analyze the test data set. All you need to do is run the following commands:
+
+```
+cd exe/
+python -u executable.py ../test_data/R1_SLOPED/
+```
+
+The jupyter notebook `int/plotting.ipynb` is also set up to plot the results.
+
 # Final comments
 
 This repository is still very much a work in progress. The code is still being tested to improve performance and versatility and any feedback would be greatly appreciated.
