@@ -46,7 +46,7 @@ intdirection = 'N'  # Direction of integration for calculating the stream functi
                     # in all four cases. Accunulating errors from divergences in the depth-integrated flow 
                     # will be different however
 
-fscheme = 'een_0'   # = 'een_0' --> The configuration uses the EEN vorticity scheme with nn_een_e3f = 0
+fscheme = 'ene'   # = 'een_0' --> The configuration uses the EEN vorticity scheme with nn_een_e3f = 0
                     # = 'een_1' --> The configuration uses the EEN vorticity scheme with nn_een_e3f = 1
                     # = 'ens' --> The configuration uses the ENS vorticity scheme
                     # = 'ene' --> The configuration uses the ENE vorticity scheme

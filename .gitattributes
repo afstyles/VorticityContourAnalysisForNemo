@@ -1,0 +1,5 @@
+test_data/R1_SLOPED/GYRE_1m_04110101_04201230_grid_V.nc filter=lfs diff=lfs merge=lfs -text
+test_data/R1_SLOPED/GYRE_1m_04110101_04201230_grid_W.nc filter=lfs diff=lfs merge=lfs -text
+test_data/R1_SLOPED/mesh_mask.nc filter=lfs diff=lfs merge=lfs -text
+test_data/R1_SLOPED/GYRE_1m_04110101_04201230_grid_T.nc filter=lfs diff=lfs merge=lfs -text
+test_data/R1_SLOPED/GYRE_1m_04110101_04201230_grid_U.nc filter=lfs diff=lfs merge=lfs -text

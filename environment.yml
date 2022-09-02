@@ -1,9 +1,9 @@
-name: vcan
+name: vcan_from_yml
 channels:
-  - conda-forge
   - defaults
 dependencies:
-  - python=3.9.*
+  - git-lfs
   - iris=3.1.0
+  - python=3.9
   - scikit-image
-prefix: /home/styles/anaconda3/envs/vcan
+prefix: /home/styles/anaconda3/envs/vcan_from_yml
